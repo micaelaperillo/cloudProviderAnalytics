@@ -3,7 +3,7 @@ from pyspark.sql.functions import *
 from pyspark.sql.types import StructType, StructField, StringType, TimestampType, IntegerType, DoubleType
 import os
 
-datalake_path = 'dataset/'
+datalake_path = 'datalake'
 
 landing_zone_path = f"{datalake_path}/landing"
 landing_zone_stream_path = f"{datalake_path}/landing/usage_events_stream"
@@ -166,4 +166,4 @@ print(f"\nProceso Streaming completado: ")
 print(f"- Datos válidos escritos en Bronze Parquet en {bronze_stream_path}")
 print(f"- Datos en cuarentena escritos en Parquet en {quarantine_path}")
 
-# spark.stop()
+spark.stop()
