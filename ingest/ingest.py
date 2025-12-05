@@ -1,11 +1,9 @@
-from google.colab import drive
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import *
 from pyspark.sql.types import StructType, StructField, StringType, TimestampType, IntegerType, DoubleType
 import os
 
-drive.mount('/content/drive')
-datalake_path = '/content/drive/MyDrive/Big Data - Final/datalake'
+datalake_path = 'dataset/'
 
 landing_zone_path = f"{datalake_path}/landing"
 landing_zone_stream_path = f"{datalake_path}/landing/usage_events_stream"
