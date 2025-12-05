@@ -61,16 +61,14 @@ for file in batch_files:
 
 print(f"\nCSV files loaded successfully. Rows: {csv_df.count()}")
 print("Schema del DataFrame Batch (CSV):")
-for csv_df in csv_dataframes.values():
-  csv_df.printSchema()
-  csv_df.select("*").limit(5).show()
+for file, csv_df in csv_dataframes.items():
 
-#Write to Bronze Parquet Batch
-csv_df.write \
-    .mode("overwrite") \
-    .format("parquet") \
-    .partitionBy("ingest_ts") \
-    .save(bronze_batch_path)
+    #Write to Bronze Parquet Batch
+    csv_df.write \
+        .mode("append") \
+        .format("parquet") \
+        .partitionBy("source_file", "ingest_ts") \
+        .save(bronze_batch_path)
 #Particionado por timestamp -> cada archivo se va a procesar en un timestamp distinto (uniqueness), y si se quiere filtrar eventualmente por fecha para limpieza por ejemplo, se puede
 
 print(f"\nProceso Batch completado: Datos CSV escritos en Bronze Parquet en {bronze_batch_path}")
