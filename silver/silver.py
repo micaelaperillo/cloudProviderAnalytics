@@ -98,7 +98,7 @@ resources_filename = 'resources.csv'
 # nos quedamos unicamente con ingest_ts del streaming
 orgs_df = bronze_dataframes[orgs_filename].filter(col("org_id").isNotNull() & col("org_name").isNotNull()).select("*").drop("ingest_ts")
 users_df = bronze_dataframes[users_filename].filter(col("user_id").isNotNull()).select("*").drop("ingest_ts")
-resources_df = bronze_dataframes[resources_filename].filter(col("resource_id").isNotNull()).select("*").drop("ingest_ts").drop("org_id")
+resources_df = bronze_dataframes[resources_filename].filter(col("resource_id").isNotNull()).select("*").drop("ingest_ts")
 
 print("########sexo1")
 
@@ -117,7 +117,7 @@ usage_events_enriched = stream_df \
     .join(orgs_df, on="org_id", how="left")
 print("joined orgs#################")
 usage_events_enriched = usage_events_enriched \
-    .join(resources_df, on="resource_id", how="left")
+    .join(resources_df, on=["org_id", "resource_id", "region", "service"], how="left")
 print("joined resources#################")
 
 #  .join(users_df, on="user_id") \
@@ -131,6 +131,7 @@ print("########sexo2")
 print(f"Stream data loaded: {stream_df.count()} rows")
 print("Stream schema luego del join mistico!!!!!!!!:")
 stream_df.printSchema()
+stream_df.select('*').where(col("timestamp").isNull() | col("region").isNull() | col("service").isNull()).show(truncate=False)
 
 # Limpiar y conformar datos de streaming
 # completo con defaults las entradas que no tengan valores validos de genai_tokens y carbon_kg
