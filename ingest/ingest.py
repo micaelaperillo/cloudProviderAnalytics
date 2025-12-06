@@ -2,6 +2,7 @@ from pyspark.sql import SparkSession
 from pyspark.sql.functions import *
 from pyspark.sql.types import StructType, StructField, StringType, TimestampType, IntegerType, DoubleType
 import os
+import shutil
 
 datalake_path = 'datalake'
 
@@ -61,9 +62,29 @@ for file in batch_files:
 
 print(f"\nCSV files loaded successfully. Rows: {csv_df.count()}")
 print("Schema del DataFrame Batch (CSV):")
+
+
+#=============== Clean bronze before writing ==================
+bronze_paths = [bronze_batch_path, bronze_stream_path, quarantine_path]
+for path in bronze_paths:
+    if os.path.exists(path):
+        try:
+            shutil.rmtree(path)
+            print(f"✓ Cleaned: {path}")
+        except Exception as e:
+            print(f"✗ Error cleaning {path}: {e}")
+    else:
+        print(f"- Path does not exist (will be created): {path}")
+
+print("\nStarting fresh writes to Bronze...\n")
+
+
+
 for file, csv_df in csv_dataframes.items():
 
     #Write to Bronze Parquet Batch
+    #TODO si uso overwrite solo se crea 1 archivo????
+    # solo append crea varios, pero no quiero que se appendee contenido a los archivos viejos
     csv_df.write \
         .mode("append") \
         .format("parquet") \

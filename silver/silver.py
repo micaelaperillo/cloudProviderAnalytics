@@ -3,6 +3,7 @@ from pyspark.sql.functions import col, sum, avg, count, countDistinct, when, lit
 from pyspark.sql.window import Window
 import pyspark.sql.functions as F
 import os
+import shutil
 
 spark = SparkSession.builder\
     .appName("Big Data")\
@@ -18,11 +19,29 @@ datalake_path = 'datalake'
 landing_zone_path = f"{datalake_path}/landing"
 bronze_batch_path = f"{datalake_path}/bronze/batch_data"
 bronze_stream_path = f"{datalake_path}/bronze/usage_events"
+
 silver_path = f"{datalake_path}/silver"
+silver_path_usage_events_clean = f"{silver_path}/usage_events_clean"
+silver_path_billing_monthly_clean = f"{silver_path}/billing_monthly_clean"
+silver_path_support_tickets_clean = f"{silver_path}/support_tickets_clean"
+silver_path_batch = f"{silver_path}/batch_data"
 
 files = os.listdir(landing_zone_path)
 batch_files = [f for f in files if f.endswith('.csv')]
 print(batch_files)
+
+
+#=============== Clean bronze before writing ==================
+silver_paths = [silver_path, silver_path_usage_events_clean, silver_path_billing_monthly_clean, silver_path_support_tickets_clean, silver_path_batch]
+for path in silver_paths:
+    if os.path.exists(path):
+        try:
+            shutil.rmtree(path)
+            print(f"✓ Cleaned: {path}")
+        except Exception as e:
+            print(f"✗ Error cleaning {path}: {e}")
+    else:
+        print(f"- Path does not exist (will be created): {path}")
 
 print("Iniciando proceso de creación de capa Silver...")
 
@@ -37,8 +56,6 @@ for filename in batch_files:
     batch_df = spark.read.parquet(f'{bronze_batch_path}/source_file={filename}')
     bronze_dataframes[filename] = batch_df
 
-for df in bronze_dataframes.values():
-    df.show(2)
 print(f"Batch data loaded: {len(bronze_dataframes)} DataFrames")
 
 # Aquí puedes agregar limpiezas específicas según los CSV que tengas
@@ -60,12 +77,10 @@ if 'billing_monthly' in [f.lower() for f in batch_df.columns] or 'amount_usd' in
 
     billing_silver.write \
         .mode("overwrite") \
-        .parquet(f"{silver_path}/billing_monthly_clean")
+        .parquet(silver_path_billing_monthly_clean)
 
     print("✓ Billing data processed to Silver")
 
-
-batch_df.show(5)
 
 # Para support_tickets (si está en CSV)
 # if 'ticket_id' in batch_df.columns:
@@ -100,42 +115,22 @@ orgs_df = bronze_dataframes[orgs_filename].filter(col("org_id").isNotNull() & co
 users_df = bronze_dataframes[users_filename].filter(col("user_id").isNotNull()).select("*").drop("ingest_ts")
 resources_df = bronze_dataframes[resources_filename].filter(col("resource_id").isNotNull()).select("*").drop("ingest_ts")
 
-print("########sexo1")
-
 # Leer streaming de Bronze
 stream_df = spark.read.parquet(bronze_stream_path)
 
-print("Stream schema:")
-stream_df.printSchema()
-print("Orgs schema:")
-orgs_df.printSchema()
-print("Resources schema:")
-resources_df.printSchema()
-
 # Join events with dimensions
 usage_events_enriched = stream_df \
-    .join(orgs_df, on="org_id", how="left")
-print("joined orgs#################")
-usage_events_enriched = usage_events_enriched \
+    .join(orgs_df, on="org_id", how="left") \
     .join(resources_df, on=["org_id", "resource_id", "region", "service"], how="left")
-print("joined resources#################")
+
 
 #  .join(users_df, on="user_id") \
 # TODO join con users
 # los eventos no tienen user_id, y cada org_id puede tener varios users asociados
 
-usage_events_enriched.write.mode("overwrite").parquet(f"{silver_path}/usage_events_clean")
-
-print("########sexo2")
-
-print(f"Stream data loaded: {stream_df.count()} rows")
-print("Stream schema luego del join mistico!!!!!!!!:")
-stream_df.printSchema()
-stream_df.select('*').where(col("timestamp").isNull() | col("region").isNull() | col("service").isNull()).show(truncate=False)
-
 # Limpiar y conformar datos de streaming
 # completo con defaults las entradas que no tengan valores validos de genai_tokens y carbon_kg
-usage_events_silver = stream_df \
+usage_events_silver = usage_events_enriched \
     .withColumn("usage_date", to_date(col("timestamp"))) \
     .withColumn("genai_tokens",
                 when((col("service") == "genai") & (col("schema_version") == 2),
@@ -151,6 +146,18 @@ usage_events_silver = stream_df \
 usage_events_silver.write \
     .mode("overwrite") \
     .partitionBy("usage_date") \
-    .parquet(f"{silver_path}/usage_events_clean")
+    .parquet(silver_path_usage_events_clean)
 
 print(f"✓ Usage events processed to Silver: {usage_events_silver.count()} rows")
+
+
+# Escribir batch procesados de bronze a silver
+#TODO por ahora no les hicimos nada, pero para que se pudan levantar desde silver los dejamos ahi
+for filename, df in bronze_dataframes.items():
+    df.write \
+        .mode("append") \
+        .format("parquet") \
+        .partitionBy("source_file", "ingest_ts") \
+        .save(silver_path_batch)
+
+    print(f"✓ {filename} written to Silver")
