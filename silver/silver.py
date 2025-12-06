@@ -67,6 +67,11 @@ print(f"Batch data loaded: {len(bronze_dataframes)} DataFrames")
 # Para usage_events en batch (si los tienes)
 # Nota: Los CSV no tienen el mismo esquema que los JSONL, así que solo procesamos JSONL como usage_events
 
+
+#TODO estas cosas medio que no hacen nada?????
+# osea se le agrega columna bnilling date pero ya existe
+# mismo con sla_breached -> ya esxiste la col y se pone en true si estaba en true??
+
 # Para billing (si está en CSV)
 if 'billing_monthly' in [f.lower() for f in batch_df.columns] or 'amount_usd' in batch_df.columns:
     billing_df = batch_df.filter(col("amount_usd").isNotNull())
@@ -112,8 +117,10 @@ resources_filename = 'resources.csv'
 #TODO se borran los ingest_ts antes de joinsear con stream data
 # nos quedamos unicamente con ingest_ts del streaming
 orgs_df = bronze_dataframes[orgs_filename].filter(col("org_id").isNotNull() & col("org_name").isNotNull()).select("*").drop("ingest_ts")
-users_df = bronze_dataframes[users_filename].filter(col("user_id").isNotNull()).select("*").drop("ingest_ts")
 resources_df = bronze_dataframes[resources_filename].filter(col("resource_id").isNotNull()).select("*").drop("ingest_ts")
+
+#TODO que onda el join con users??? los usage_events no tienen nada que ver con users, no tienen user_id
+# users_df = bronze_dataframes[users_filename].filter(col("user_id").isNotNull()).select("*").drop("ingest_ts")
 
 # Leer streaming de Bronze
 stream_df = spark.read.parquet(bronze_stream_path)
