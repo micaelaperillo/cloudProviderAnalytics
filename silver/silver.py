@@ -1,5 +1,5 @@
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, sum, avg, count, countDistinct, when, lit, to_date
+from pyspark.sql.functions import col, sum, avg, count, countDistinct, when, lit, to_date, to_timestamp
 from pyspark.sql.window import Window
 import pyspark.sql.functions as F
 import os
@@ -115,6 +115,7 @@ users_filename = 'users.csv'
 resources_filename = 'resources.csv'
 
 #TODO se borran los ingest_ts antes de joinsear con stream data
+# Por que aca se borra en lugar de directamente no agregarla en ingest?
 # nos quedamos unicamente con ingest_ts del streaming
 orgs_df = bronze_dataframes[orgs_filename].filter(col("org_id").isNotNull() & col("org_name").isNotNull()).select("*").drop("ingest_ts")
 resources_df = bronze_dataframes[resources_filename].filter(col("resource_id").isNotNull()).select("*").drop("ingest_ts")
@@ -146,16 +147,46 @@ usage_events_silver = usage_events_enriched \
     .withColumn("carbon_kg",
                 when(col("schema_version") == 2, col("carbon_kg"))
                 .otherwise(lit(0.0))) \
-    .dropDuplicates(["event_id"]) \
-    .filter(col("event_id").isNotNull())
+    .withColumn("requests",
+        when(col("metric") == "requests", col("value")).otherwise(0)
+    ) \
+    .withColumn("cpu_hours",
+        when(col("metric") == "cpu_hours", col("value")).otherwise(0)
+    ) \
+    .withColumn("storage_gb_hours",
+        when(col("metric") == "storage_gb_hours", col("value")).otherwise(0)
+    ) \
+    .dropDuplicates(["event_id"]) 
+    # .filter(col("event_id").isNotNull()) # Lo comento porque ya se valida en bronze/quarentine
+
+# Datos agregados por dia (features calucladas)
+daily_usage_silver = usage_events_silver.groupBy(
+    "org_id", "service", "usage_date"
+).agg(
+    sum("cost_usd_increment").alias("daily_cost_usd"),
+    sum("requests").alias("total_requests"),
+    sum("cpu_hours").alias("total_cpu_hours"),
+    sum("storage_gb_hours").alias("total_storage_gb_hours"),
+    sum("genai_tokens").alias("total_genai_tokens"),
+    sum("carbon_kg").alias("total_carbon_kg"),
+    count("*").alias("event_count")
+)
 
 # Guardar en Silver
 usage_events_silver.write \
     .mode("overwrite") \
     .partitionBy("usage_date") \
-    .parquet(silver_path_usage_events_clean)
+    .parquet(f"{silver_path}/usage_events_clean")
+
+daily_usage_silver.write \
+    .mode("overwrite") \
+    .partitionBy("usage_date") \
+    .parquet(f"{silver_path}/daily_usage")
 
 print(f"✓ Usage events processed to Silver: {usage_events_silver.count()} rows")
+usage_events_silver.printSchema()
+print(f"✓ Daily usage events processed to Silver: {daily_usage_silver.count()} rows")
+daily_usage_silver.printSchema()
 
 
 # Escribir batch procesados de bronze a silver
