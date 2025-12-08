@@ -34,8 +34,10 @@ gold_path = f"{datalake_path}/gold"
 
 print("\n[1/5] Creando mart: org_daily_usage_by_service...")
 
-org_daily_usage_by_service = spark.read.parquet(f"{silver_path}/usage_events_clean") \
-    .groupBy("org_id", "usage_date", "service") \
+usage_events_clean = spark.read.parquet(silver_path_usage_events_clean)
+
+
+org_daily_usage_by_service = usage_events_clean.groupBy("org_id", "usage_date", "service") \
     .agg(
         sum("cost_usd_increment").alias("daily_cost_usd"),
         count("event_id").alias("total_requests"),
