@@ -2,6 +2,7 @@ from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, sum, avg, count, countDistinct, when, lit, to_date
 from pyspark.sql.window import Window
 import pyspark.sql.functions as F
+from pyspark.sql.functions import *
 
 spark = SparkSession.builder\
     .appName("Big Data")\
@@ -34,7 +35,6 @@ gold_path = f"{datalake_path}/gold"
 print("\n[1/5] Creando mart: org_daily_usage_by_service...")
 
 usage_events_clean = spark.read.parquet(silver_path_usage_events_clean)
-usage_events_clean.printSchema()
 
 
 # org_daily_usage_by_service = usage_events_clean.groupBy("org_id", "usage_date", "service") \
@@ -56,6 +56,30 @@ usage_events_clean.printSchema()
 #     .parquet(f"{gold_path}/finops/org_daily_usage_by_service")
 
 # print(f"✓ Mart creado: {org_daily_usage_by_service.count()} rows")
+
+
+# --------------------------------------------------------------------------------
+#  Query 3: Evolucion de tickets criticos
+# --------------------------------------------------------------------------------
+support_tickets_df = spark.read.parquet(silver_path_support_tickets_clean)
+# support_tickets_df.select('severity').show(500)
+
+
+query3_df = support_tickets_df \
+    .filter(col("severity") == "critical") \
+    .withColumn("date", to_date(col("created_at"))) \
+    .withColumn("solved", when(col("resolved_at").isNotNull(), to_date(col("resolved_at")))) \
+    .groupBy("date") \
+    .agg(
+        sum(when(col("sla_breached") == True, 1).otherwise(0)).alias("breach_count"),
+        sum(when(col("solved").isNotNull(), 1).otherwise(0)).alias("solved_count"),
+        count("*").alias("critical_ticket_count"),
+        avg(col("sla_breached").cast("int")).alias("sla_breach_rate")
+    ) \
+    .orderBy("date")
+query3_df.select('*').where(col('breach_count') > 0).show(500)
+
+
 
 
 # # --------------------------------------------------------------------------------
@@ -124,7 +148,7 @@ usage_events_clean.printSchema()
 
 
 # # --------------------------------------------------------------------------------
-# # MART 4: Soporte - tickets_by_org_date
+# # Query 4: Soporte - tickets_by_org_date
 # # --------------------------------------------------------------------------------
 # print("\n[4/5] Creando mart: tickets_by_org_date...")
 
@@ -207,16 +231,12 @@ usage_events_clean.printSchema()
 #     last_updated TIMESTAMP
 # )   
 
-# CREATE TABLE daily_costs_requests_by_org_service (
+# CREATE TABLE critical_tickets_evolution_sla_rate_daily_last30days (
+#     ticket_id STRING,
 #     org_id STRING,
-#     usage_date DATE,
-#     service STRING,
-#     daily_cost_usd DOUBLE,
-#     total_requests LONG,
-#     cpu_hours DOUBLE,
-#     storage_gb_hours DOUBLE,
-#     genai_tokens LONG,
-#     carbon_kg DOUBLE,
-#     avg_cost_per_event DOUBLE,
-#     last_updated TIMESTAMP
+#     category STRING,
+#     created_at TIMESTAMP,
+#     resolved_at TIMESTAMP NULLABLE,
+#     severity STRING,
+#     sla_breached BOOLEAN,
 # )   
