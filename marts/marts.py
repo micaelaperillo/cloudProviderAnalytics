@@ -53,7 +53,6 @@ org_daily_usage_by_service.write \
     .partitionBy("usage_date") \
     .parquet(f"{gold_path}/finops/org_daily_usage_by_service")
 
-org_daily_usage_by_service.show(10)
 
 # print(f"✓ Mart creado: {org_daily_usage_by_service.count()} rows")
 
@@ -67,7 +66,7 @@ billing_silver = spark.read.parquet(f"{silver_path}/billing_monthly_clean")
 revenue_by_org_month = billing_silver \
     .withColumn("month_and_year", date_format(col("month"), "yyyy-MM")) \
     .drop("month") \
-    .groupBy("org_id", "month") \
+    .groupBy("org_id", "month_and_year") \
     .agg(
         sum("subtotal_usd").alias("revenue_usd"),
         sum("credits_usd").alias("credits_usd"),
@@ -85,13 +84,13 @@ print(f"✓ Mart creado: {revenue_by_org_month.count()} rows")
 #     print(f"⚠ Billing data no disponible, skipping revenue_by_org_month: {e}")
 
 # --------------------------------------------------------------------------------
-#  Query 3: Evolucion de tickets criticos
+#  Query 3: critical_tickets_evolution_sla_rate_daily
 # --------------------------------------------------------------------------------
 support_tickets_df = spark.read.parquet(silver_path_support_tickets_clean)
 # support_tickets_df.select('severity').show(500)
 
 
-query3_df = support_tickets_df \
+critical_tickets_evolution_sla_rate_daily = support_tickets_df \
     .filter(col("severity") == "critical") \
     .withColumn("date", to_date(col("created_at"))) \
     .withColumn("solved", when(col("resolved_at").isNotNull(), to_date(col("resolved_at")))) \
@@ -100,105 +99,33 @@ query3_df = support_tickets_df \
         sum(when(col("sla_breached") == True, 1).otherwise(0)).alias("breach_count"),
         sum(when(col("solved").isNotNull(), 1).otherwise(0)).alias("solved_count"),
         count("*").alias("critical_ticket_count"),
-        avg(col("sla_breached").cast("int")).alias("sla_breach_rate")
+    ) \
+    .withColumn(
+          "breach_rate",
+          col("breach_count") / col("critical_ticket_count")
     ) \
     .orderBy("date")
-query3_df.select('*').where(col('breach_count') > 0).show(500)
 
-# # --------------------------------------------------------------------------------
-# # MART 3: FinOps - cost_anomaly_mart
-# # --------------------------------------------------------------------------------
-# print("\n[3/5] Creando mart: cost_anomaly_mart...")
-
-# window_spec = Window.partitionBy("org_id", "service")
-
-# cost_anomaly_mart = spark.read.parquet(f"{silver_path}/usage_events_clean") \
-#     .groupBy("org_id", "usage_date", "service") \
-#     .agg(sum("cost_usd_increment").alias("daily_cost")) \
-#     .withColumn("mean_cost", F.avg("daily_cost").over(window_spec)) \
-#     .withColumn("stddev_cost", F.stddev("daily_cost").over(window_spec)) \
-#     .withColumn("z_score",
-#                 when(col("stddev_cost") > 0,
-#                      (col("daily_cost") - col("mean_cost")) / col("stddev_cost"))
-#                 .otherwise(0)) \
-#     .withColumn("is_anomaly",
-#                 when(F.abs(col("z_score")) > 3, True).otherwise(False)) \
-#     .withColumn("anomaly_score", F.abs(col("z_score"))) \
-#     .withColumn("last_updated", F.current_timestamp()) \
-#     .select("org_id", "usage_date", "service", "daily_cost",
-#             "z_score", "anomaly_score", "is_anomaly", "last_updated")
-
-# cost_anomaly_mart.write \
-#     .mode("overwrite") \
-#     .partitionBy("usage_date") \
-#     .parquet(f"{gold_path}/finops/cost_anomaly_mart")
-
-# print(f"✓ Mart creado: {cost_anomaly_mart.count()} rows")
+critical_tickets_evolution_sla_rate_daily.write \
+    .mode("overwrite") \
+    .parquet(f"{gold_path}/finops/critical_tickets_evolution_sla_rate_daily")
 
 
-# # --------------------------------------------------------------------------------
-# # Query 4: Soporte - tickets_by_org_date
-# # --------------------------------------------------------------------------------
-# print("\n[4/5] Creando mart: tickets_by_org_date...")
 
-# try:
-#     tickets_silver = spark.read.parquet(f"{silver_path}/support_tickets_clean")
+# --------------------------------------------------------------------------------
+#  Query 5: genai_tokens_cost_daily
+# --------------------------------------------------------------------------------
 
-#     tickets_by_org_date = tickets_silver \
-#         .withColumn("ticket_date", to_date(col("created_at"))) \
-#         .groupBy("org_id", "ticket_date", "severity") \
-#         .agg(
-#             count("ticket_id").alias("ticket_count"),
-#             sum(when(col("sla_breached") == True, 1).otherwise(0)).alias("sla_breach_count"),
-#             avg("csat_score").alias("avg_csat"),
-#             countDistinct("ticket_id").alias("unique_tickets"),
-#             avg("resolution_time_hours").alias("avg_resolution_hours")
-#         ) \
-#         .withColumn("sla_breach_rate",
-#                     when(col("ticket_count") > 0, col("sla_breach_count") / col("ticket_count"))
-#                     .otherwise(0.0)) \
-#         .withColumn("last_updated", F.current_timestamp())
-
-#     tickets_by_org_date.write \
-#         .mode("overwrite") \
-#         .partitionBy("ticket_date") \
-#         .parquet(f"{gold_path}/support/tickets_by_org_date")
-
-#     print(f"✓ Mart creado: {tickets_by_org_date.count()} rows")
-
-# except Exception as e:
-#     print(f"⚠ Support tickets data no disponible, skipping tickets_by_org_date: {e}")
-
-
-# # --------------------------------------------------------------------------------
-# # MART 5: Producto/Usage - genai_tokens_by_org_date
-# # --------------------------------------------------------------------------------
-# print("\n[5/5] Creando mart: genai_tokens_by_org_date...")
-
-# COST_PER_1K_TOKENS = 0.002
-
-# genai_tokens_by_org_date = spark.read.parquet(f"{silver_path}/usage_events_clean") \
-#     .filter((col("service") == "genai") & (col("genai_tokens") > 0)) \
-#     .groupBy("org_id", "usage_date") \
+silver_path_events_clean = spark.read.parquet(silver_path_usage_events_clean).select('*') \
+.where((col("genai_tokens") > 0) & (col("service") != "genai") ) \
+.show(10)
+# genai_tokens_cost_daily = silver_path_events_clean \
+#     .filter(col("service") == "genai") \
+#     .groupBy("usage_date") \
 #     .agg(
-#         sum("genai_tokens").alias("total_tokens"),
-#         count("event_id").alias("total_requests"),
-#         avg("genai_tokens").alias("avg_tokens_per_request")
-#     ) \
-#     .withColumn("estimated_cost_usd",
-#                 (col("total_tokens") / 1000) * lit(COST_PER_1K_TOKENS)) \
-#     .withColumn("last_updated", F.current_timestamp())
-
-# genai_tokens_by_org_date.write \
-#     .mode("overwrite") \
-#     .partitionBy("usage_date") \
-#     .parquet(f"{gold_path}/product/genai_tokens_by_org_date")
-
-# print(f"✓ Mart creado: {genai_tokens_by_org_date.count()} rows")
-
-# print("\n✓ Todos los marts Gold creados exitosamente")
-
-# spark.stop()
+#         sum("genai_tokens").alias("total_genai_tokens"),
+#         sum("genai_cost_usd").alias("total_genai_cost_usd"),
+#     )
 
 
 # ================================================================================
