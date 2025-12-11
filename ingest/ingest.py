@@ -5,25 +5,13 @@ import os
 import shutil
 
 datalake_path = 'datalake'
-
 landing_zone_path = f"{datalake_path}/landing"
 landing_zone_stream_path = f"{datalake_path}/landing/usage_events_stream"
-
-print(f"Landing zone path: {landing_zone_path}")
-print(f"Landing zone stream path: {landing_zone_stream_path}")
-
 bronze_batch_path = f"{datalake_path}/bronze/batch_data"
 bronze_stream_path = f"{datalake_path}/bronze/usage_events"
 checkpoint_location = f"{datalake_path}/checkpoints/usage_events_cp"
 quarantine_path = f"{datalake_path}/quarantine/usage_events_errors"
 quarantine_checkpoint = f"{datalake_path}/checkpoints/quarantine_cp"
-
-print(f"Path Landing (CSV): {landing_zone_path}")
-print(f"Path Landing (Streaming JSONL): {landing_zone_stream_path}")
-print(f"Path destino Bronze (Batch): {bronze_batch_path}")
-print(f"Path destino Bronze (Streaming): {bronze_stream_path}")
-print(f"Ruta de destino Bronze (Streaming OK): {bronze_stream_path}")
-print(f"Ruta de destino Cuarentena (Errores): {quarantine_path}")
 
 def ingest_data(): 
     spark = SparkSession.builder\
@@ -46,12 +34,12 @@ def ingest_data():
             .option("header", "true") \
             .option("inferSchema", "true") \
             .load(f"{landing_zone_path}/{file}")
-    columns_map = {
-        "ingest_ts": current_timestamp(),
-        "source_file": lit(file)
-    }
-    csv_df = csv_df.withColumns(columns_map) #Añadir marcas de ingesta
-    csv_dataframes[file] = csv_df
+        columns_map = {
+            "ingest_ts": current_timestamp(),
+            "source_file": lit(file)
+        }
+        csv_df = csv_df.withColumns(columns_map) #Añadir marcas de ingesta
+        csv_dataframes[file] = csv_df
 
     bronze_paths = [bronze_batch_path, bronze_stream_path, quarantine_path, checkpoint_location, quarantine_checkpoint]
     for path in bronze_paths:
@@ -163,3 +151,5 @@ def ingest_data():
     query_quarantine.awaitTermination()
 
     spark.stop()
+
+ingest_data()

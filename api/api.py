@@ -8,6 +8,7 @@ from .models import (
 )
 
 from ingest import ingest_data
+from silver import silver
 
 app = FastAPI()
 
@@ -21,7 +22,11 @@ def ingest():
 
 @app.post("/silver")
 def silver():
-    return {"status": "Silver layer processing started"}
+    try:
+        silver()
+        return {"status": "Silver layer processing started"}
+    except Exception as e:
+        return {"status": "Silver processing failed", "error": str(e)}
 
 @app.post("/serving")
 def serving():
