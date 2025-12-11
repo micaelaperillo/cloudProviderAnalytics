@@ -59,7 +59,7 @@ org_daily_usage_by_service.write \
 # # --------------------------------------------------------------------------------
 # # MART 2: FinOps - revenue_by_org_month
 # # --------------------------------------------------------------------------------
-print("\n[2/5] Creando mart: revenue_by_org_month...")
+# print("\n[2/5] Creando mart: revenue_by_org_month...")
 
 billing_silver = spark.read.parquet(f"{silver_path}/billing_monthly_clean")
 
@@ -128,7 +128,74 @@ genai_tokens_cost_daily = silver_path_events_clean \
 genai_tokens_cost_daily.write \
     .mode("overwrite") \
     .parquet(f"{gold_path}/finops/genai_tokens_cost_daily")
+# --------------------------------------------------------------------------------
+#  Query 4: Revenue mensual con créditos/impuestos aplicados (normalizado a USD)
+# --------------------------------------------------------------------------------
 
+billing_df = spark.read.parquet(f"{silver_path}/billing_monthly_clean")
+
+query4_df = (
+    billing_df
+        .groupBy("org_id", "month")
+        .agg(
+            sum("subtotal_usd").alias("revenue_usd"),
+            sum("credits_usd").alias("credits_usd"),
+            sum("taxes_usd").alias("tax_usd"),
+            avg("exchange_rate_to_usd").alias("fx_applied")
+        )
+)
+
+query4_df.write \
+    .mode("overwrite") \
+    .parquet(f"{gold_path}/finops/query4_df")
+
+query4_df.select('*').where(col('revenue_usd') > 0).show(500)
+
+# # --------------------------------------------------------------------------------
+# # MART 3: FinOps - cost_anomaly_mart
+# # --------------------------------------------------------------------------------
+# print("\n[3/5] Creando mart: cost_anomaly_mart...")
+
+# window_spec = Window.partitionBy("org_id", "service")
+
+# cost_anomaly_mart = spark.read.parquet(f"{silver_path}/usage_events_clean") \
+#     .groupBy("org_id", "usage_date", "service") \
+#     .agg(sum("cost_usd_increment").alias("daily_cost")) \
+#     .withColumn("mean_cost", F.avg("daily_cost").over(window_spec)) \
+#     .withColumn("stddev_cost", F.stddev("daily_cost").over(window_spec)) \
+#     .withColumn("z_score",
+#                 when(col("stddev_cost") > 0,
+#                      (col("daily_cost") - col("mean_cost")) / col("stddev_cost"))
+#                 .otherwise(0)) \
+#     .withColumn("is_anomaly",
+#                 when(F.abs(col("z_score")) > 3, True).otherwise(False)) \
+#     .withColumn("anomaly_score", F.abs(col("z_score"))) \
+#     .withColumn("last_updated", F.current_timestamp()) \
+#     .select("org_id", "usage_date", "service", "daily_cost",
+#             "z_score", "anomaly_score", "is_anomaly", "last_updated")
+
+# cost_anomaly_mart.write \
+#     .mode("overwrite") \
+#     .partitionBy("usage_date") \
+#     .parquet(f"{gold_path}/finops/cost_anomaly_mart")
+
+# print(f"✓ Mart creado: {cost_anomaly_mart.count()} rows")
+
+
+# # --------------------------------------------------------------------------------
+# # MART 5: Producto/Usage - genai_tokens_by_org_date
+# # --------------------------------------------------------------------------------
+# print("\n[5/5] Creando mart: genai_tokens_by_org_date...")
+
+# COST_PER_1K_TOKENS = 0.002
+
+# genai_tokens_by_org_date = spark.read.parquet(f"{silver_path}/usage_events_clean") \
+#     .filter((col("service") == "genai") & (col("genai_tokens") > 0)) \
+#     .groupBy("org_id", "usage_date") \
+#     .agg(
+#         sum("genai_tokens").alias("total_genai_tokens"),
+#         sum("genai_cost_usd").alias("total_genai_cost_usd"),
+#     )
 
 
 # ================================================================================
