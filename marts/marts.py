@@ -60,7 +60,7 @@ org_daily_usage_by_service.show(10)
 # # --------------------------------------------------------------------------------
 # # MART 2: FinOps - revenue_by_org_month
 # # --------------------------------------------------------------------------------
-print("\n[2/5] Creando mart: revenue_by_org_month...")
+# print("\n[2/5] Creando mart: revenue_by_org_month...")
 
 billing_silver = spark.read.parquet(f"{silver_path}/billing_monthly_clean")
 
@@ -104,6 +104,29 @@ query3_df = support_tickets_df \
     .orderBy("date")
 query3_df.select('*').where(col('breach_count') > 0).show(500)
 
+# --------------------------------------------------------------------------------
+#  Query 4: Revenue mensual con créditos/impuestos aplicados (normalizado a USD)
+# --------------------------------------------------------------------------------
+
+billing_df = spark.read.parquet(f"{silver_path}/billing_monthly_clean")
+
+query4_df = (
+    billing_df
+        .groupBy("org_id", "month")
+        .agg(
+            sum("subtotal_usd").alias("revenue_usd"),
+            sum("credits_usd").alias("credits_usd"),
+            sum("taxes_usd").alias("tax_usd"),
+            avg("exchange_rate_to_usd").alias("fx_applied")
+        )
+)
+
+query4_df.write \
+    .mode("overwrite") \
+    .parquet(f"{gold_path}/finops/query4_df")
+
+query4_df.select('*').where(col('revenue_usd') > 0).show(500)
+
 # # --------------------------------------------------------------------------------
 # # MART 3: FinOps - cost_anomaly_mart
 # # --------------------------------------------------------------------------------
@@ -133,40 +156,6 @@ query3_df.select('*').where(col('breach_count') > 0).show(500)
 #     .parquet(f"{gold_path}/finops/cost_anomaly_mart")
 
 # print(f"✓ Mart creado: {cost_anomaly_mart.count()} rows")
-
-
-# # --------------------------------------------------------------------------------
-# # Query 4: Soporte - tickets_by_org_date
-# # --------------------------------------------------------------------------------
-# print("\n[4/5] Creando mart: tickets_by_org_date...")
-
-# try:
-#     tickets_silver = spark.read.parquet(f"{silver_path}/support_tickets_clean")
-
-#     tickets_by_org_date = tickets_silver \
-#         .withColumn("ticket_date", to_date(col("created_at"))) \
-#         .groupBy("org_id", "ticket_date", "severity") \
-#         .agg(
-#             count("ticket_id").alias("ticket_count"),
-#             sum(when(col("sla_breached") == True, 1).otherwise(0)).alias("sla_breach_count"),
-#             avg("csat_score").alias("avg_csat"),
-#             countDistinct("ticket_id").alias("unique_tickets"),
-#             avg("resolution_time_hours").alias("avg_resolution_hours")
-#         ) \
-#         .withColumn("sla_breach_rate",
-#                     when(col("ticket_count") > 0, col("sla_breach_count") / col("ticket_count"))
-#                     .otherwise(0.0)) \
-#         .withColumn("last_updated", F.current_timestamp())
-
-#     tickets_by_org_date.write \
-#         .mode("overwrite") \
-#         .partitionBy("ticket_date") \
-#         .parquet(f"{gold_path}/support/tickets_by_org_date")
-
-#     print(f"✓ Mart creado: {tickets_by_org_date.count()} rows")
-
-# except Exception as e:
-#     print(f"⚠ Support tickets data no disponible, skipping tickets_by_org_date: {e}")
 
 
 # # --------------------------------------------------------------------------------
