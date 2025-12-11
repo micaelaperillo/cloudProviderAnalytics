@@ -3,7 +3,6 @@ from pyspark.sql.functions import col, sum, avg, count, countDistinct, when, lit
 from pyspark.sql.window import Window
 import pyspark.sql.functions as F
 
-
 spark = SparkSession.builder\
     .appName("Big Data")\
     .config("spark.jars.packages", "org.apache.hadoop:hadoop-aws:3.3.4") \

@@ -97,6 +97,7 @@ print(f"\nProceso Batch completado: Datos CSV escritos en Bronze Parquet en {bro
 # Ingesta Streaming a Bronze
 # ==========================
 
+# castea automaticamente, y si no puede setea en null
 stream_schema = StructType([
     StructField("event_id", StringType(), False),
     StructField("timestamp", TimestampType(), True),
@@ -133,27 +134,37 @@ processed_stream_df.printSchema()
 print("Watermark y deduplicación configurados (10 min de latencia).")
 processed_stream_df.printSchema()
 
-COST_ANOMALY_THRESHOLD = 5.00
-COST_ANOMALY_PERCENTILE = 0.99
 
 quality_rules_df = processed_stream_df.selectExpr("*",
-    # [event_id no nulo]
+    # event_id no nulo
     "event_id IS NOT NULL as is_event_id_valid",
 
-    # [cost_usd_increment >= -0.01] y [flag de anomalía si > umbral]
-    "cost_usd_increment >= -0.01 as is_cost_range_valid",
-    f"cost_usd_increment > {COST_ANOMALY_THRESHOLD} as is_cost_anomaly",
+    # timestamp valido
+    "timestamp IS NOT NULL as is_valid_timestamp"
 
-    # [unit no nulo cuando value no nulo]
+    # unit no nulo cuando value no nulo
     "CASE WHEN value IS NOT NULL THEN unit IS NOT NULL ELSE TRUE END as is_unit_valid",
 
-    # [schema_version manejada y compatibilizada] (asumimos 1 o 2 son válidos)
+    # verificar que la version sea 1 o 2
     "schema_version IN (1, 2) as is_schema_version_valid"
-    # Verificar que esten las columnas de la v2 tambien en la v1
+
+    # unidad correcta según la métrica
+    """
+    CASE
+        WHEN metric = 'requests' THEN unit = 'count'
+        WHEN metric = 'cpu_hours' THEN unit = 'hours'
+        WHEN metric = 'storage_gb_hours' THEN unit = 'gb_hours'
+        ELSE TRUE
+    END as is_correct_unit
+    """
 )
 
 quarantine_flagged_df = quality_rules_df.withColumn("is_quarantine",
-    ~col("is_event_id_valid") | ~col("is_cost_range_valid") | ~col("is_unit_valid") | ~col("is_schema_version_valid")
+    ~col("is_event_id_valid") | \
+    ~col("is_valid_timestamp") | \
+    ~col("is_unit_valid") | \
+    ~col("is_schema_version_valid") | \
+    ~col("is_correct_unit")
 )
 
 good_data_df = quarantine_flagged_df.filter(col("is_quarantine") == False)
