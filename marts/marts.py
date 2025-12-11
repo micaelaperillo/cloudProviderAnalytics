@@ -65,7 +65,8 @@ print("\n[2/5] Creando mart: revenue_by_org_month...")
 billing_silver = spark.read.parquet(f"{silver_path}/billing_monthly_clean")
 
 revenue_by_org_month = billing_silver \
-    .withColumn("month", date_format(col("billing_date"), "yyyy-MM")) \
+    .withColumn("month_and_year", date_format(col("month"), "yyyy-MM")) \
+    .drop("month") \
     .groupBy("org_id", "month") \
     .agg(
         sum("subtotal_usd").alias("revenue_usd"),
