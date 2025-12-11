@@ -122,7 +122,7 @@ silver_path_events_clean = spark.read.parquet(silver_path_usage_events_clean).se
 # genai_tokens_cost_daily = silver_path_events_clean \
 #     .filter(col("service") == "genai") \
 #     .groupBy("usage_date") \
-query3_df.select('*').where(col('breach_count') > 0).show(500)
+#query3_df.select('*').where(col('breach_count') > 0).show(500)
 
 # --------------------------------------------------------------------------------
 #  Query 4: Revenue mensual con créditos/impuestos aplicados (normalizado a USD)
