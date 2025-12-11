@@ -116,16 +116,19 @@ critical_tickets_evolution_sla_rate_daily.write \
 #  Query 5: genai_tokens_cost_daily
 # --------------------------------------------------------------------------------
 
-silver_path_events_clean = spark.read.parquet(silver_path_usage_events_clean).select('*') \
-.where((col("genai_tokens") > 0) & (col("service") != "genai") ) \
-.show(10)
-# genai_tokens_cost_daily = silver_path_events_clean \
-#     .filter(col("service") == "genai") \
-#     .groupBy("usage_date") \
-#     .agg(
-#         sum("genai_tokens").alias("total_genai_tokens"),
-#         sum("genai_cost_usd").alias("total_genai_cost_usd"),
-#     )
+silver_path_events_clean = spark.read.parquet(silver_path_usage_events_clean)
+genai_tokens_cost_daily = silver_path_events_clean \
+    .filter(col("service") == "genai") \
+    .groupBy("usage_date") \
+    .agg(
+        sum("genai_tokens").alias("total_genai_tokens"),
+        sum("cost_usd_increment").alias("total_genai_cost_usd"),
+    ).orderBy("usage_date")
+
+genai_tokens_cost_daily.write \
+    .mode("overwrite") \
+    .parquet(f"{gold_path}/finops/genai_tokens_cost_daily")
+
 
 
 # ================================================================================
