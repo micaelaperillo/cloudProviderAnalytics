@@ -73,18 +73,21 @@ print(f"Batch data loaded: {len(bronze_dataframes)} DataFrames")
 # mismo con sla_breached -> ya esxiste la col y se pone en true si estaba en true??
 
 # Para billing (si está en CSV)
-if 'billing_monthly' in [f.lower() for f in batch_df.columns] or 'amount_usd' in batch_df.columns:
-    billing_df = batch_df.filter(col("amount_usd").isNotNull())
+billing_df = bronze_dataframes["billing_monthly.csv"]
 
-    billing_silver = billing_df \
-        .withColumn("billing_date", to_date(col("billing_date"))) \
-        .dropDuplicates()
+billing_silver = billing_df \
+    .withColumns({ 
+        "subtotal_usd": col("subtotal")*col("exchange_rate_to_usd"),
+        "credits_usd": col("credits")*col("exchange_rate_to_usd"),
+        "taxes_usd": col("taxes")*col("exchange_rate_to_usd")
+    }) \
+    .dropDuplicates()
 
-    billing_silver.write \
-        .mode("overwrite") \
-        .parquet(silver_path_billing_monthly_clean)
+billing_silver.write \
+    .mode("overwrite") \
+    .parquet(silver_path_billing_monthly_clean)
 
-    print("✓ Billing data processed to Silver")
+print("✓ Billing data processed to Silver")
 
 
 # Para support_tickets (si está en CSV)
@@ -170,7 +173,7 @@ daily_usage_silver = usage_events_silver.groupBy(
     sum("genai_tokens").alias("total_genai_tokens"),
     sum("carbon_kg").alias("total_carbon_kg"),
     count("*").alias("event_count")
-)
+).withColumn("last_updated", F.current_timestamp())
 
 # Guardar en Silver
 usage_events_silver.write \

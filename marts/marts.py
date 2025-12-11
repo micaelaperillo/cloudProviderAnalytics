@@ -1,5 +1,5 @@
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, sum, avg, count, countDistinct, when, lit, to_date
+from pyspark.sql.functions import col, sum, avg, count, countDistinct, when, lit, to_date, date_format
 from pyspark.sql.window import Window
 import pyspark.sql.functions as F
 
@@ -15,6 +15,7 @@ print("\nSpark Session inicializada.")
 datalake_path = 'datalake'
 silver_path = f"{datalake_path}/silver"
 silver_path_usage_events_clean = f"{silver_path}/usage_events_clean"
+silver_path_daily_usage = f"{silver_path}/daily_usage"
 silver_path_billing_monthly_clean = f"{silver_path}/billing_monthly_clean"
 silver_path_support_tickets_clean = f"{silver_path}/support_tickets_clean"
 silver_path_batch = f"{silver_path}/batch_data"
@@ -29,67 +30,78 @@ gold_path = f"{datalake_path}/gold"
 # MART 1: FinOps - org_daily_usage_by_service
 # --------------------------------------------------------------------------------
 
-# spark.read.parquet(silver_path_usage_events_clean).show(500)
-
 print("\n[1/5] Creando mart: org_daily_usage_by_service...")
 
-usage_events_clean = spark.read.parquet(silver_path_usage_events_clean)
+daily_usage_silver = spark.read.parquet(silver_path_daily_usage)
 
+org_daily_usage_by_service = daily_usage_silver.select(
+    "org_id",
+    "service",
+    "usage_date",
+    "daily_cost_usd",
+    "total_requests",
+    "total_cpu_hours",
+    "total_storage_gb_hours",
+    "total_genai_tokens",
+    "total_carbon_kg",
+    "last_updated"
+)
 
-org_daily_usage_by_service = usage_events_clean.groupBy("org_id", "usage_date", "service") \
-    .agg(
-        sum("cost_usd_increment").alias("daily_cost_usd"),
-        count("event_id").alias("total_requests"),
-        sum(when(col("unit") == "hours", col("value")).otherwise(0)).alias("cpu_hours"),
-        sum(when(col("unit") == "gb_hours", col("value")).otherwise(0)).alias("storage_gb_hours"),
-        sum("genai_tokens").alias("genai_tokens"),
-        sum("carbon_kg").alias("carbon_kg"),
-        avg("cost_usd_increment").alias("avg_cost_per_event")
-    ) \
-    .withColumn("last_updated", F.current_timestamp())
+org_daily_usage_by_service.write \
+    .mode("overwrite") \
+    .partitionBy("usage_date") \
+    .parquet(f"{gold_path}/finops/org_daily_usage_by_service")
 
 org_daily_usage_by_service.show(10)
-# org_daily_usage_by_service.write \
-#     .mode("overwrite") \
-#     .partitionBy("usage_date") \
-#     .parquet(f"{gold_path}/finops/org_daily_usage_by_service")
 
 print(f"✓ Mart creado: {org_daily_usage_by_service.count()} rows")
-
 
 # # --------------------------------------------------------------------------------
 # # MART 2: FinOps - revenue_by_org_month
 # # --------------------------------------------------------------------------------
-# print("\n[2/5] Creando mart: revenue_by_org_month...")
+print("\n[2/5] Creando mart: revenue_by_org_month...")
 
-# # Verificar si existe billing data
-# try:
-#     billing_silver = spark.read.parquet(f"{silver_path}/billing_monthly_clean")
+billing_silver = spark.read.parquet(f"{silver_path}/billing_monthly_clean")
 
-#     revenue_by_org_month = billing_silver \
-#         .withColumn("month", F.date_format(col("billing_date"), "yyyy-MM")) \
-#         .groupBy("org_id", "month") \
-#         .agg(
-#             sum("amount_usd").alias("revenue_usd"),
-#             sum("credits_applied_usd").alias("total_credits_usd"),
-#             sum("tax_usd").alias("total_tax_usd"),
-#             sum("amount_local").alias("revenue_local_currency"),
-#             F.first("currency").alias("local_currency"),
-#             F.first("fx_rate_to_usd").alias("fx_rate"),
-#             (sum("amount_usd") + sum("tax_usd") - sum("credits_applied_usd")).alias("net_revenue_usd")
-#         ) \
-#         .withColumn("last_updated", F.current_timestamp())
+revenue_by_org_month = billing_silver \
+    .withColumn("month", date_format(col("billing_date"), "yyyy-MM")) \
+    .groupBy("org_id", "month") \
+    .agg(
+        sum("subtotal_usd").alias("revenue_usd"),
+        sum("credits_usd").alias("credits_usd"),
+        sum("taxes_usd").alias("tax_usd"),
+        avg("exchange_rate_to_usd").alias("fx_applied")
+    )
 
-#     revenue_by_org_month.write \
-#         .mode("overwrite") \
-#         .partitionBy("month") \
-#         .parquet(f"{gold_path}/finops/revenue_by_org_month")
+revenue_by_org_month.write \
+    .mode("overwrite") \
+    .parquet(f"{gold_path}/finops/revenue_by_org_month")
 
-#     print(f"✓ Mart creado: {revenue_by_org_month.count()} rows")
+print(f"✓ Mart creado: {revenue_by_org_month.count()} rows")
 
 # except Exception as e:
 #     print(f"⚠ Billing data no disponible, skipping revenue_by_org_month: {e}")
 
+# # --------------------------------------------------------------------------------
+# # MART 2.5: FinOps - usage_by_org
+# # --------------------------------------------------------------------------------
+print("\n[2/5] Creando mart: revenue_by_org_month...")
+
+billing_silver = spark.read.parquet(f"{silver_path}/billing_monthly_clean")
+
+revenue_by_org_month = billing_silver \
+    .withColumn("month", date_format(col("billing_date"), "yyyy-MM")) \
+    .groupBy("org_id", "month") \
+    .agg(
+        sum("subtotal_usd").alias("revenue_usd"),
+        sum("credits_usd").alias("credits_usd"),
+        sum("taxes_usd").alias("tax_usd"),
+        avg("exchange_rate_to_usd").alias("fx_applied")
+    )
+
+revenue_by_org_month.write \
+    .mode("overwrite") \
+    .parquet(f"{gold_path}/finops/revenue_by_org_month")
 
 # # --------------------------------------------------------------------------------
 # # MART 3: FinOps - cost_anomaly_mart
