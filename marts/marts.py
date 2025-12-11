@@ -2,6 +2,7 @@ from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, sum, avg, count, countDistinct, when, lit, to_date, date_format
 from pyspark.sql.window import Window
 import pyspark.sql.functions as F
+from pyspark.sql.functions import *
 
 spark = SparkSession.builder\
     .appName("Big Data")\
@@ -54,7 +55,7 @@ org_daily_usage_by_service.write \
 
 org_daily_usage_by_service.show(10)
 
-print(f"✓ Mart creado: {org_daily_usage_by_service.count()} rows")
+# print(f"✓ Mart creado: {org_daily_usage_by_service.count()} rows")
 
 # # --------------------------------------------------------------------------------
 # # MART 2: FinOps - revenue_by_org_month
@@ -82,26 +83,26 @@ print(f"✓ Mart creado: {revenue_by_org_month.count()} rows")
 # except Exception as e:
 #     print(f"⚠ Billing data no disponible, skipping revenue_by_org_month: {e}")
 
-# # --------------------------------------------------------------------------------
-# # MART 2.5: FinOps - usage_by_org
-# # --------------------------------------------------------------------------------
-print("\n[2/5] Creando mart: revenue_by_org_month...")
+# --------------------------------------------------------------------------------
+#  Query 3: Evolucion de tickets criticos
+# --------------------------------------------------------------------------------
+support_tickets_df = spark.read.parquet(silver_path_support_tickets_clean)
+# support_tickets_df.select('severity').show(500)
 
-billing_silver = spark.read.parquet(f"{silver_path}/billing_monthly_clean")
 
-revenue_by_org_month = billing_silver \
-    .withColumn("month", date_format(col("billing_date"), "yyyy-MM")) \
-    .groupBy("org_id", "month") \
+query3_df = support_tickets_df \
+    .filter(col("severity") == "critical") \
+    .withColumn("date", to_date(col("created_at"))) \
+    .withColumn("solved", when(col("resolved_at").isNotNull(), to_date(col("resolved_at")))) \
+    .groupBy("date") \
     .agg(
-        sum("subtotal_usd").alias("revenue_usd"),
-        sum("credits_usd").alias("credits_usd"),
-        sum("taxes_usd").alias("tax_usd"),
-        avg("exchange_rate_to_usd").alias("fx_applied")
-    )
-
-revenue_by_org_month.write \
-    .mode("overwrite") \
-    .parquet(f"{gold_path}/finops/revenue_by_org_month")
+        sum(when(col("sla_breached") == True, 1).otherwise(0)).alias("breach_count"),
+        sum(when(col("solved").isNotNull(), 1).otherwise(0)).alias("solved_count"),
+        count("*").alias("critical_ticket_count"),
+        avg(col("sla_breached").cast("int")).alias("sla_breach_rate")
+    ) \
+    .orderBy("date")
+query3_df.select('*').where(col('breach_count') > 0).show(500)
 
 # # --------------------------------------------------------------------------------
 # # MART 3: FinOps - cost_anomaly_mart
@@ -135,7 +136,7 @@ revenue_by_org_month.write \
 
 
 # # --------------------------------------------------------------------------------
-# # MART 4: Soporte - tickets_by_org_date
+# # Query 4: Soporte - tickets_by_org_date
 # # --------------------------------------------------------------------------------
 # print("\n[4/5] Creando mart: tickets_by_org_date...")
 
@@ -197,3 +198,33 @@ revenue_by_org_month.write \
 # print("\n✓ Todos los marts Gold creados exitosamente")
 
 # spark.stop()
+
+
+# ================================================================================
+# CONSULTAS CQL QUE HAY QUE RESPONDER CON LOS MARTS
+# ================================================================================
+
+#costos y request diarios por org y servicio en un rango de fechas
+# CREATE TABLE daily_costs_requests_by_org_service (
+#     org_id STRING,
+#     usage_date DATE,
+#     service STRING,
+#     daily_cost_usd DOUBLE,
+#     total_requests LONG,
+#     cpu_hours DOUBLE,
+#     storage_gb_hours DOUBLE,
+#     genai_tokens LONG,
+#     carbon_kg DOUBLE,
+#     avg_cost_per_event DOUBLE,
+#     last_updated TIMESTAMP
+# )   
+
+# CREATE TABLE critical_tickets_evolution_sla_rate_daily_last30days (
+#     ticket_id STRING,
+#     org_id STRING,
+#     category STRING,
+#     created_at TIMESTAMP,
+#     resolved_at TIMESTAMP NULLABLE,
+#     severity STRING,
+#     sla_breached BOOLEAN,
+# )   

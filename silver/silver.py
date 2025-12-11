@@ -2,6 +2,7 @@ from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, sum, avg, count, countDistinct, when, lit, to_date, to_timestamp
 from pyspark.sql.window import Window
 import pyspark.sql.functions as F
+from pyspark.sql.functions import *
 import os
 import shutil
 
@@ -53,7 +54,11 @@ print("Iniciando proceso de creación de capa Silver...")
 bronze_dataframes = {}
 for filename in batch_files:
     print(f"Processing batch file: {filename}")
-    batch_df = spark.read.parquet(f'{bronze_batch_path}/source_file={filename}')
+    columns_map = {
+      "source_file": lit(filename)
+    }
+    batch_df = spark.read.parquet(f'{bronze_batch_path}/source_file={filename}') \
+        .withColumns(columns_map)
     bronze_dataframes[filename] = batch_df
 
 print(f"Batch data loaded: {len(bronze_dataframes)} DataFrames")
@@ -91,21 +96,17 @@ print("✓ Billing data processed to Silver")
 
 
 # Para support_tickets (si está en CSV)
-# if 'ticket_id' in batch_df.columns:
-    # tickets_df = batch_df.filter(col("ticket_id").isNotNull())
+support_tickets_df = bronze_dataframes['support_tickets.csv'].filter(col("ticket_id").isNotNull())
 
-    # tickets_silver = tickets_df \
-    #     .withColumn("created_at", to_date(col("created_at"))) \
-    #     .withColumn("sla_breached",
-    #                 when(col("sla_breached").cast("string").isin(["true", "True", "1"]), True)
-    #                 .otherwise(False)) \
-    #     .dropDuplicates(["ticket_id"])
+tickets_silver = support_tickets_df \
+    .withColumn("created_at", to_date(col("created_at"))) \
+    .dropDuplicates(["ticket_id"])
+tickets_silver.show(5)
+tickets_silver.write \
+    .mode("overwrite") \
+    .parquet(f"{silver_path}/support_tickets_clean")
 
-    # tickets_silver.write \
-    #     .mode("overwrite") \
-    #     .parquet(f"{silver_path}/support_tickets_clean")
-
-    # print("✓ Support tickets processed to Silver")
+print("✓ Support tickets processed to Silver")
 
 
 # --------------------------------------------------------------------------------
@@ -120,8 +121,8 @@ resources_filename = 'resources.csv'
 #TODO se borran los ingest_ts antes de joinsear con stream data
 # Por que aca se borra en lugar de directamente no agregarla en ingest?
 # nos quedamos unicamente con ingest_ts del streaming
-orgs_df = bronze_dataframes[orgs_filename].filter(col("org_id").isNotNull() & col("org_name").isNotNull()).select("*").drop("ingest_ts")
-resources_df = bronze_dataframes[resources_filename].filter(col("resource_id").isNotNull()).select("*").drop("ingest_ts")
+orgs_df = bronze_dataframes[orgs_filename].filter(col("org_id").isNotNull() & col("org_name").isNotNull()).select("*").drop("ingest_ts").drop("source_file")
+resources_df = bronze_dataframes[resources_filename].filter(col("resource_id").isNotNull()).select("*").drop("ingest_ts").drop("source_file")
 
 #TODO que onda el join con users??? los usage_events no tienen nada que ver con users, no tienen user_id
 # users_df = bronze_dataframes[users_filename].filter(col("user_id").isNotNull()).select("*").drop("ingest_ts")
@@ -195,6 +196,7 @@ daily_usage_silver.printSchema()
 # Escribir batch procesados de bronze a silver
 #TODO por ahora no les hicimos nada, pero para que se pudan levantar desde silver los dejamos ahi
 for filename, df in bronze_dataframes.items():
+    
     df.write \
         .mode("append") \
         .format("parquet") \
