@@ -65,7 +65,7 @@ print("Schema del DataFrame Batch (CSV):")
 
 
 #=============== Clean bronze before writing ==================
-bronze_paths = [bronze_batch_path, bronze_stream_path, quarantine_path]
+bronze_paths = [bronze_batch_path, bronze_stream_path, quarantine_path, checkpoint_location, quarantine_checkpoint]
 for path in bronze_paths:
     if os.path.exists(path):
         try:
@@ -140,13 +140,13 @@ quality_rules_df = processed_stream_df.selectExpr("*",
     "event_id IS NOT NULL as is_event_id_valid",
 
     # timestamp valido
-    "timestamp IS NOT NULL as is_valid_timestamp"
+    "timestamp IS NOT NULL as is_valid_timestamp",
 
     # unit no nulo cuando value no nulo
     "CASE WHEN value IS NOT NULL THEN unit IS NOT NULL ELSE TRUE END as is_unit_valid",
 
     # verificar que la version sea 1 o 2
-    "schema_version IN (1, 2) as is_schema_version_valid"
+    "schema_version IN (1, 2) as is_schema_version_valid",
 
     # unidad correcta según la métrica
     """
@@ -192,8 +192,14 @@ print("Esperando a que finalice la ejecución única de ambos Streams (Parquet S
 query_good.awaitTermination()
 query_quarantine.awaitTermination()
 
-print(f"\nProceso Streaming completado: ")
-print(f"- Datos válidos escritos en Bronze Parquet en {bronze_stream_path}")
-print(f"- Datos en cuarentena escritos en Parquet en {quarantine_path}")
+# Verify data was actually written
+print(f"\n✓ Streams completed")
+try:
+    good_written = spark.read.parquet(bronze_stream_path).count()
+    quarantine_written = spark.read.parquet(quarantine_path).count()
+    print(f"- Datos válidos: {good_written} registros en {bronze_stream_path}")
+    print(f"- Datos en cuarentena: {quarantine_written} registros en {quarantine_path}")
+except Exception as e:
+    print(f"⚠ Error reading written data: {e}")
 
 spark.stop()

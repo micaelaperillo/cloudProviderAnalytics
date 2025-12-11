@@ -34,27 +34,28 @@ gold_path = f"{datalake_path}/gold"
 print("\n[1/5] Creando mart: org_daily_usage_by_service...")
 
 usage_events_clean = spark.read.parquet(silver_path_usage_events_clean)
+usage_events_clean.printSchema()
 
 
-org_daily_usage_by_service = usage_events_clean.groupBy("org_id", "usage_date", "service") \
-    .agg(
-        sum("cost_usd_increment").alias("daily_cost_usd"),
-        count("event_id").alias("total_requests"),
-        sum(when(col("unit") == "hours", col("value")).otherwise(0)).alias("cpu_hours"),
-        sum(when(col("unit") == "gb_hours", col("value")).otherwise(0)).alias("storage_gb_hours"),
-        sum("genai_tokens").alias("genai_tokens"),
-        sum("carbon_kg").alias("carbon_kg"),
-        avg("cost_usd_increment").alias("avg_cost_per_event")
-    ) \
-    .withColumn("last_updated", F.current_timestamp())
+# org_daily_usage_by_service = usage_events_clean.groupBy("org_id", "usage_date", "service") \
+#     .agg(
+#         sum("cost_usd_increment").alias("daily_cost_usd"),
+#         count("event_id").alias("total_requests"),
+#         sum(when(col("unit") == "hours", col("value")).otherwise(0)).alias("cpu_hours"),
+#         sum(when(col("unit") == "gb_hours", col("value")).otherwise(0)).alias("storage_gb_hours"),
+#         sum("genai_tokens").alias("genai_tokens"),
+#         sum("carbon_kg").alias("carbon_kg"),
+#         avg("cost_usd_increment").alias("avg_cost_per_event")
+#     ) \
+#     .withColumn("last_updated", F.current_timestamp())
 
-org_daily_usage_by_service.show(10)
+# org_daily_usage_by_service.show(10)
 # org_daily_usage_by_service.write \
 #     .mode("overwrite") \
 #     .partitionBy("usage_date") \
 #     .parquet(f"{gold_path}/finops/org_daily_usage_by_service")
 
-print(f"✓ Mart creado: {org_daily_usage_by_service.count()} rows")
+# print(f"✓ Mart creado: {org_daily_usage_by_service.count()} rows")
 
 
 # # --------------------------------------------------------------------------------
@@ -185,3 +186,37 @@ print(f"✓ Mart creado: {org_daily_usage_by_service.count()} rows")
 # print("\n✓ Todos los marts Gold creados exitosamente")
 
 # spark.stop()
+
+
+# ================================================================================
+# CONSULTAS CQL QUE HAY QUE RESPONDER CON LOS MARTS
+# ================================================================================
+
+#costos y request diarios por org y servicio en un rango de fechas
+# CREATE TABLE daily_costs_requests_by_org_service (
+#     org_id STRING,
+#     usage_date DATE,
+#     service STRING,
+#     daily_cost_usd DOUBLE,
+#     total_requests LONG,
+#     cpu_hours DOUBLE,
+#     storage_gb_hours DOUBLE,
+#     genai_tokens LONG,
+#     carbon_kg DOUBLE,
+#     avg_cost_per_event DOUBLE,
+#     last_updated TIMESTAMP
+# )   
+
+# CREATE TABLE daily_costs_requests_by_org_service (
+#     org_id STRING,
+#     usage_date DATE,
+#     service STRING,
+#     daily_cost_usd DOUBLE,
+#     total_requests LONG,
+#     cpu_hours DOUBLE,
+#     storage_gb_hours DOUBLE,
+#     genai_tokens LONG,
+#     carbon_kg DOUBLE,
+#     avg_cost_per_event DOUBLE,
+#     last_updated TIMESTAMP
+# )   

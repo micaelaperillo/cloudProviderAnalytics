@@ -2,6 +2,7 @@ from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, sum, avg, count, countDistinct, when, lit, to_date, to_timestamp
 from pyspark.sql.window import Window
 import pyspark.sql.functions as F
+from pyspark.sql.functions import *
 import os
 import shutil
 
@@ -53,7 +54,11 @@ print("Iniciando proceso de creación de capa Silver...")
 bronze_dataframes = {}
 for filename in batch_files:
     print(f"Processing batch file: {filename}")
-    batch_df = spark.read.parquet(f'{bronze_batch_path}/source_file={filename}')
+    columns_map = {
+      "source_file": lit(filename)
+    }
+    batch_df = spark.read.parquet(f'{bronze_batch_path}/source_file={filename}') \
+        .withColumns(columns_map)
     bronze_dataframes[filename] = batch_df
 
 print(f"Batch data loaded: {len(bronze_dataframes)} DataFrames")
@@ -192,6 +197,7 @@ daily_usage_silver.printSchema()
 # Escribir batch procesados de bronze a silver
 #TODO por ahora no les hicimos nada, pero para que se pudan levantar desde silver los dejamos ahi
 for filename, df in bronze_dataframes.items():
+    
     df.write \
         .mode("append") \
         .format("parquet") \
