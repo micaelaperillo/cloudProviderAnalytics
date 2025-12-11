@@ -5,5 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+    "fastapi>=0.124.2",
     "pyspark>=4.0.1",
+    "streamlit>=1.52.1",
 ]
