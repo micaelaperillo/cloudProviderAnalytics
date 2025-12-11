@@ -12,9 +12,6 @@ print("="*80)
 
 print("Instalando Spark Cassandra Connector...")
 
-# Detener sesión actual de Spark
-spark.stop()
-
 # Reinstalar Spark con el conector de Cassandra
 from pyspark.sql import SparkSession
 
@@ -34,6 +31,7 @@ print("✓ Spark reiniciado con Cassandra Connector")
 # Configuración de conexión a AstraDB
 # --------------------------------------------------------------------------------
 
+#TODO configurar bien la conexiona Cassandra
 # COMPLETAR ESTOS CAMPOS CON TUS CREDENCIALES DE ASTRADB
 ASTRA_CLIENT_ID = "TU_CLIENT_ID"  # Token: Client ID
 ASTRA_CLIENT_SECRET = "TU_CLIENT_SECRET"  # Token: Client Secret
@@ -45,6 +43,50 @@ print("\n⚠ RECORDATORIO: Actualizar credenciales de AstraDB antes de ejecutar"
 print(f"- Client ID: {ASTRA_CLIENT_ID}")
 print(f"- Bundle path: {ASTRA_SECURE_BUNDLE_PATH}")
 print(f"- Keyspace: {KEYSPACE}")
+
+from cassandra.cluster import Cluster
+from cassandra.auth import PlainTextAuthProvider
+
+# Conectar para crear tablas
+cloud_config = {'secure_connect_bundle': ASTRA_SECURE_BUNDLE_PATH}
+auth_provider = PlainTextAuthProvider(ASTRA_CLIENT_ID, ASTRA_CLIENT_SECRET)
+cluster = Cluster(cloud=cloud_config, auth_provider=auth_provider)
+session = cluster.connect()
+
+print("✓ Conectado a AstraDB para crear tablas")
+
+# Crear keyspace
+create_keyspace_query = f"""
+CREATE KEYSPACE IF NOT EXISTS {KEYSPACE}
+WITH replication = {{'class': 'NetworkTopologyStrategy', 'datacenter1': 3}}
+\"""
+try:
+    session.execute(create_keyspace_query)
+    print(f"✓ Keyspace '{KEYSPACE}' verificado/creado")
+except Exception as e:
+    print(f"⚠ Keyspace ya existe o error: {e}")
+
+session.set_keyspace(KEYSPACE)
+"""
+
+# Tabla para queries 1 y 2
+create_table_1 = """
+CREATE TABLE IF NOT EXISTS org_daily_usage_by_service (
+    org_id text,
+    usage_date date,
+    service text,
+    daily_cost_usd double,
+    total_requests double,
+    total_cpu_hours double,
+    total_storage_gb_hours double,
+    total_genai_tokens int,
+    total_carbon_kg double,
+    PRIMARY KEY ((org_id), usage_date, service)
+) WITH CLUSTERING ORDER BY (usage_date DESC, service ASC);
+"""
+session.execute(create_table_1)
+print("✓ Tabla org_daily_usage_by_service creada")
+
 
 # Descomentar cuando tengas las credenciales configuradas
 """
