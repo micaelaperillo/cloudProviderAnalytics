@@ -7,7 +7,25 @@ from .models import (
     Query5Request
 )
 
+from ingest import ingest_data
+
 app = FastAPI()
+
+@app.post("/ingest")
+def ingest():
+    try:
+        ingest_data()
+        return {"status": "Ingestion started"}
+    except Exception as e:
+        return {"status": "Ingestion failed", "error": str(e)}
+
+@app.post("/silver")
+def silver():
+    return {"status": "Silver layer processing started"}
+
+@app.post("/serving")
+def serving():
+    return {"status": "Serving layer processing started"}
 
 @app.post("/query/costs-daily")
 def query_costs_daily(req: Query1Request):
