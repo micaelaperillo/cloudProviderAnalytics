@@ -147,5 +147,3 @@ def silver():
             .format("parquet") \
             .partitionBy("source_file", "ingest_ts") \
             .save(silver_path_batch)
-        
-silver()

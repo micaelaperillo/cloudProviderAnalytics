@@ -151,5 +151,3 @@ def ingest_data():
     query_quarantine.awaitTermination()
 
     spark.stop()
-
-ingest_data()
