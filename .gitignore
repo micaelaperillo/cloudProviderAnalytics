@@ -2,3 +2,4 @@ dataset/
 datalake/
 *.csv
 *.txt
+*.env

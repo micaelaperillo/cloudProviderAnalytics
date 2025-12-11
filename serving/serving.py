@@ -1,10 +1,9 @@
-# ================================================================================
-# REQUERIMIENTO 5: SERVING EN ASTRADB (CASSANDRA)
-# ================================================================================
 
-print("\n" + "="*80)
-print("SERVING EN ASTRADB (CASSANDRA) - USANDO SPARK CONNECTOR")
-print("="*80)
+import os
+from dotenv import load_dotenv
+from pyspark.sql import SparkSession
+from cassandra.cluster import Cluster
+from cassandra.auth import PlainTextAuthProvider
 
 # --------------------------------------------------------------------------------
 # Instalar y configurar Spark Cassandra Connector
@@ -13,14 +12,11 @@ print("="*80)
 print("Instalando Spark Cassandra Connector...")
 
 # Reinstalar Spark con el conector de Cassandra
-from pyspark.sql import SparkSession
 
 spark = SparkSession.builder \
     .appName("Big Data - Cassandra Integration") \
     .config("spark.jars.packages",
             "com.datastax.spark:spark-cassandra-connector_2.12:3.4.1") \
-    .config("spark.sql.extensions",
-            "com.datastax.spark.connector.CassandraSparkExtensions") \
     .getOrCreate()
 
 spark.sparkContext.setLogLevel("ERROR")
@@ -31,24 +27,21 @@ print("✓ Spark reiniciado con Cassandra Connector")
 # Configuración de conexión a AstraDB
 # --------------------------------------------------------------------------------
 
-#TODO configurar bien la conexiona Cassandra
-# COMPLETAR ESTOS CAMPOS CON TUS CREDENCIALES DE ASTRADB
-ASTRA_CLIENT_ID = "TU_CLIENT_ID"  # Token: Client ID
-ASTRA_CLIENT_SECRET = "TU_CLIENT_SECRET"  # Token: Client Secret
-ASTRA_SECURE_BUNDLE_PATH = "/content/drive/MyDrive/Big Data - Final/secure-connect-bundle.zip"
-ASTRA_DB_ID = "TU_DATABASE_ID"  # ID de tu base de datos en AstraDB
-KEYSPACE = "cloud_analytics"
+load_dotenv()
 
-print("\n⚠ RECORDATORIO: Actualizar credenciales de AstraDB antes de ejecutar")
-print(f"- Client ID: {ASTRA_CLIENT_ID}")
-print(f"- Bundle path: {ASTRA_SECURE_BUNDLE_PATH}")
-print(f"- Keyspace: {KEYSPACE}")
+ASTRA_CLIENT_ID = os.getenv("ASTRA_CLIENT_ID")
+ASTRA_CLIENT_SECRET = os.getenv("ASTRA_CLIENT_SECRET")
+ASTRA_TOKEN = os.getenv("ASTRA_TOKEN")
+ASTRA_SECURE_BUNDLE_PATH = os.getenv("ASTRA_SECURE_BUNDLE_PATH", "secure-connect-big-data-tp.zip")
+KEYSPACE = os.getenv("KEYSPACE", "cloud_analytics")
 
-from cassandra.cluster import Cluster
-from cassandra.auth import PlainTextAuthProvider
-
-# Conectar para crear tablas
+bundle_exists = os.path.exists(ASTRA_SECURE_BUNDLE_PATH)
+print(f"\n✓ Verificando Secure Bundle:")
+print(f"  - Ruta: {ASTRA_SECURE_BUNDLE_PATH}")
+print(f"  - Existe: {'✓ SÍ' if bundle_exists else '✗ NO'}")
 cloud_config = {'secure_connect_bundle': ASTRA_SECURE_BUNDLE_PATH}
+
+
 auth_provider = PlainTextAuthProvider(ASTRA_CLIENT_ID, ASTRA_CLIENT_SECRET)
 cluster = Cluster(cloud=cloud_config, auth_provider=auth_provider)
 session = cluster.connect()
@@ -59,15 +52,23 @@ print("✓ Conectado a AstraDB para crear tablas")
 create_keyspace_query = f"""
 CREATE KEYSPACE IF NOT EXISTS {KEYSPACE}
 WITH replication = {{'class': 'NetworkTopologyStrategy', 'datacenter1': 3}}
-\"""
-try:
-    session.execute(create_keyspace_query)
-    print(f"✓ Keyspace '{KEYSPACE}' verificado/creado")
-except Exception as e:
-    print(f"⚠ Keyspace ya existe o error: {e}")
-
-session.set_keyspace(KEYSPACE)
 """
+# Verificar conexión
+row = session.execute("select release_version from system.local").one()
+if row:
+    print(f"  ✓ Conectado exitosamente")
+    print(f"  - Versión Cassandra: {row[0]}")
+else:
+    print(f"  ✗ Conexión fallida - Sin respuesta del servidor")
+
+# Listar keyspaces disponibles
+print(f"\n✓ Keyspaces disponibles:")
+rows = session.execute("SELECT keyspace_name FROM system_schema.keyspaces")
+for row in rows:
+    print(f"  - {row.keyspace_name}")
+
+cluster.shutdown()
+print(f"\n✓ Validación completada exitosamente")
 
 # Tabla para queries 1 y 2
 create_table_1 = """
@@ -84,7 +85,7 @@ CREATE TABLE IF NOT EXISTS org_daily_usage_by_service (
     PRIMARY KEY ((org_id), usage_date, service)
 ) WITH CLUSTERING ORDER BY (usage_date DESC, service ASC);
 """
-session.execute(create_table_1)
+# session.execute(create_table_1)
 print("✓ Tabla org_daily_usage_by_service creada")
 
 
