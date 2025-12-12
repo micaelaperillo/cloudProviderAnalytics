@@ -53,6 +53,10 @@ def query1():
         "total_genai_tokens",
         "total_carbon_kg",
         "last_updated"
+    ).where(
+        (col('total_requests').isNotNull()) &
+        (col('total_cpu_hours').isNotNull()) &
+        (col('total_storage_gb_hours').isNotNull())
     )
 
     out.write \
@@ -75,7 +79,7 @@ def query2():
         .groupBy("org_id", "month_and_year")
         .agg(
             sum("subtotal_usd").alias("revenue_usd"),
-            sum("credits_usd").alias("credits_usd"),
+            F.sum(F.coalesce(col("credits_usd"), F.lit(0))).alias("credits_usd"),
             sum("taxes_usd").alias("tax_usd"),
             avg("exchange_rate_to_usd").alias("fx_applied")
         )
@@ -125,7 +129,7 @@ def query4():
         df.groupBy("org_id", "month")
         .agg(
             sum("subtotal_usd").alias("revenue_usd"),
-            sum("credits_usd").alias("credits_usd"),
+            F.sum(F.coalesce(col("credits_usd"), F.lit(0))).alias("credits_usd"),
             sum("taxes_usd").alias("tax_usd"),
             avg("exchange_rate_to_usd").alias("fx_applied"),
         )

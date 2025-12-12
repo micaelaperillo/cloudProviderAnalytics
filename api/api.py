@@ -92,7 +92,7 @@ def query_top_services_endpoint(req: Query2Request):
 
 @app.post("/query/sla-evolution")
 def query_sla_evolution_endpoint(req: Query3Request):
-    result = retrieve_query3_results()
+    result = retrieve_query3_results(req)
     return result
 
 
