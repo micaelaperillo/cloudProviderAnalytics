@@ -8,7 +8,7 @@ from .models import (
 )
 
 # IMPORTS RENOMBRADOS PARA EVITAR COLISIONES
-from serving.serving import retrieve_query3_results  # si hay más funciones, importarlas con alias
+from serving.serving import *  # si hay más funciones, importarlas con alias
 import os
 from ingest.ingest import ingest_data
 from silver.silver import silver as run_silver
@@ -70,6 +70,7 @@ def silver_endpoint():
 
 @app.post("/serving")
 def serving_endpoint():
+    run_serving_pipeline()
     return {"status": "Serving layer processing started"}
 
 
@@ -79,13 +80,13 @@ def serving_endpoint():
 
 @app.post("/query/costs-daily")
 def query_costs_daily_endpoint(req: Query1Request):
-    result = run_query1(req)
+    result = retrieve_query1_results(req)
     return result
 
 
 @app.post("/query/top-services")
 def query_top_services_endpoint(req: Query2Request):
-    result = run_query2(req)
+    result = retrieve_query2_results(req)
     return result
 
 
@@ -97,11 +98,11 @@ def query_sla_evolution_endpoint(req: Query3Request):
 
 @app.post("/query/monthly-revenue")
 def query_monthly_revenue_endpoint(req: Query4Request):
-    result = run_query4(req)
+    result = retrieve_query4_results(req)
     return result
 
 
 @app.post("/query/genai-tokens")
 def query_genai_tokens_endpoint(req: Query5Request):
-    result = run_query5(req)
+    result = retrieve_query5_results(req)
     return result

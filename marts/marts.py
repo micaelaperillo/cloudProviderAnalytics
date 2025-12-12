@@ -2,7 +2,7 @@ from pyspark.sql import SparkSession
 from pyspark.sql.functions import (
     col, sum, avg, count, when, to_date, date_format
 )
-
+from functools import reduce
 import pyspark.sql.functions as F
 
 # =====================================================================
@@ -60,7 +60,8 @@ def query1():
         .partitionBy("usage_date") \
         .parquet(f"{gold_path}/finops/org_daily_usage_by_service")
 
-    spark.stop()
+    out.printSchema()
+    return out
 
 
 def query2():
@@ -82,9 +83,10 @@ def query2():
 
     revenue.write \
         .mode("overwrite") \
-        .parquet(f"{gold_path}/finops/revenue_by_org_month")
+        .parquet(f"{gold_path}/finops/services_by_cum_cost_by_org")
 
-    spark.stop()
+    revenue.printSchema()
+    return revenue
 
 
 def query3():
@@ -110,7 +112,7 @@ def query3():
         .mode("overwrite") \
         .parquet(f"{gold_path}/finops/critical_tickets_evolution_sla_rate_daily")
 
-    spark.stop()
+    out.printSchema()
     return out
 
 
@@ -131,9 +133,9 @@ def query4():
 
     out.write \
         .mode("overwrite") \
-        .parquet(f"{gold_path}/finops/query4_df")
+        .parquet(f"{gold_path}/finops/revenue_by_org_month_usd")
 
-    spark.stop()
+    out.printSchema()
     return out
 
 
@@ -156,11 +158,42 @@ def query5():
         .mode("overwrite") \
         .parquet(f"{gold_path}/finops/genai_tokens_cost_daily")
 
-    spark.stop()
+    out.printSchema()
     return out
 
+def columns_with_nulls(df):
+    cols = []
+    for c in df.columns:
+        if df.filter(col(c).isNull()).count() > 0:
+            cols.append(c)
+    return cols
 
 if __name__ == "__main__":
-    query1()
-    query3()
-    query5()
+    spark = get_spark()
+    
+    df1 = query1()
+    print("query1 tiene NULLs:", columns_with_nulls(df1))
+    df1.select('total_requests', 'total_cpu_hours', 'total_storage_gb_hours').where(
+        (col('total_requests').isNull()) |
+        (col('total_cpu_hours').isNull()) |
+        (col('total_storage_gb_hours').isNull())
+    ).show()
+
+    df2 = query2()
+    print("query2 tiene NULLs:", columns_with_nulls(df2))
+    df2.select('credits_usd').where(
+        (col('credits_usd').isNull())
+    ).show()
+
+    df3 = query3()
+    print("query3 tiene NULLs:", columns_with_nulls(df3))
+
+    df4 = query4()
+    print("query4 tiene NULLs:", columns_with_nulls(df4))
+    df4.select('credits_usd').where(
+        (col('credits_usd').isNull())
+    ).show()
+
+    df5 = query5()
+    print("query5 tiene NULLs:", columns_with_nulls(df5))
+    spark.stop()

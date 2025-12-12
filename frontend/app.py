@@ -11,6 +11,19 @@ st.set_page_config(page_title="Analytics Dashboard", layout="wide")
 st.title("📊 Cloud Provider Analytics Dashboard")
 st.markdown("Use the tabs below to execute analytics queries.")
 
+st.sidebar.header("Pipelines")
+if st.sidebar.button("▶ Run Ingest"):
+    r = requests.post(f"{API_URL}/ingest")
+    st.sidebar.success(r.json().get("status", "Ingest started"))
+
+if st.sidebar.button("▶ Run Silver"):
+    r = requests.post(f"{API_URL}/silver")
+    st.sidebar.success(r.json().get("status", "Silver layer processing started"))
+
+if st.sidebar.button("▶ Run Serving"):
+    r = requests.post(f"{API_URL}/serving")
+    st.sidebar.success(r.json().get("status", "Serving pipeline started"))
+
 # Create tabs
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "📅 Daily Costs & Requests",
@@ -59,16 +72,9 @@ with tab1:
         }
         res = requests.post(f"{API_URL}/query/costs-daily", json=payload).json()
 
-        daily = pd.DataFrame(res["daily"])
-
-        st.subheader("📈 Cost Trend")
-        show_chart(daily, "date", "cost_usd")
-
-        st.subheader("📊 Requests Trend")
-        show_chart(daily, "date", "requests")
-
+        df = pd.DataFrame(res)
         st.subheader("📋 Detailed Table")
-        show_table(daily)
+        show_table(df)
 
 
 # ============================================================
@@ -86,12 +92,8 @@ with tab2:
         payload = {"organization": org, "top_n": top_n}
         res = requests.post(f"{API_URL}/query/top-services", json=payload).json()
 
-        df = pd.DataFrame(res["services"])
-
-        st.subheader("🏆 Ranking de Servicios")
-        show_chart(df, "service", "total_cost_usd", type="bar")
-
-        st.subheader("📋 Detalle")
+        df = pd.DataFrame(res)
+        st.subheader("📋 Detailed Table")
         show_table(df)
 
 
@@ -111,14 +113,6 @@ with tab3:
         res = requests.post(f"{API_URL}/query/sla-evolution", json=payload).json()
 
         df = pd.DataFrame(res)
-
-        # st.subheader("📉 Critical Tickets Over Time")
-        # show_chart(df, "date", "critical_tickets")
-
-        # st.subheader("⚠ SLA Breach Rate (%)")
-        # df["SLA_breach_%"] = df["sla_breach_rate"] * 100
-        # show_chart(df, "date", "SLA_breach_%")
-
         st.subheader("📋 Detailed Table")
         show_table(df)
 
@@ -143,12 +137,9 @@ with tab4:
         payload = {"organization": org, "year": year, "month": month}
         res = requests.post(f"{API_URL}/query/monthly-revenue", json=payload).json()
 
-        st.subheader("📌 Summary Metrics")
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Revenue Base (USD)", f"{res['revenue_usd_normalized']:.2f}")
-        c2.metric("Créditos Aplicados", f"{res['credits_applied_usd']:.2f}")
-        c3.metric("Impuestos", f"{res['taxes_usd']:.2f}")
-        c4.metric("Revenue Final (USD)", f"{res['final_revenue_usd']:.2f}")
+        df = pd.DataFrame(res)
+        st.subheader("📋 Detailed Table")
+        show_table(df)
 
 
 # ============================================================
@@ -171,16 +162,6 @@ with tab5:
         payload = {"organization": org, "start_date": str(start), "end_date": str(end)}
         res = requests.post(f"{API_URL}/query/genai-tokens", json=payload).json()
 
-        df = pd.DataFrame(res["daily"])
-
-        st.subheader("🔢 Tokens Input")
-        show_chart(df, "date", "tokens_input")
-
-        st.subheader("🔤 Tokens Output")
-        show_chart(df, "date", "tokens_output")
-
-        st.subheader("💵 Estimated Daily Cost")
-        show_chart(df, "date", "cost_usd")
-
+        df = pd.DataFrame(res)
         st.subheader("📋 Detailed Table")
         show_table(df)
