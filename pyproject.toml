@@ -11,4 +11,5 @@ dependencies = [
     "pyspark>=4.0.1",
     "python-dotenv>=1.2.1",
     "streamlit>=1.52.1",
+    "uvicorn>=0.38.0",
 ]

@@ -12,7 +12,8 @@ class Query2Request(BaseModel):
     top_n: int
 
 class Query3Request(BaseModel):
-    organization: str
+    start_date: str
+    end_date: str
 
 class Query4Request(BaseModel):
     organization: str

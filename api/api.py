@@ -7,14 +7,43 @@ from .models import (
     Query5Request
 )
 
-from ingest import ingest_data
-from silver import silver
-from marts import query1, query2, query3, query4, query5
+# IMPORTS RENOMBRADOS PARA EVITAR COLISIONES
+from serving.serving import retrieve_query3_results  # si hay más funciones, importarlas con alias
+import os
+from ingest.ingest import ingest_data
+from silver.silver import silver as run_silver
+from marts.marts import (
+    query1 as run_query1,
+    query2 as run_query2,
+    query3 as run_query3,
+    query4 as run_query4,
+    query5 as run_query5
+)
+
+from astrapy import DataAPIClient
+from dotenv import load_dotenv
 
 app = FastAPI()
 
+# cassandra connection
+load_dotenv()
+
+ASTRA_TOKEN = os.getenv("ASTRA_TOKEN")
+KEYSPACE = os.getenv("KEYSPACE", "datalake")
+
+client = DataAPIClient(ASTRA_TOKEN)
+db = client.get_database_by_api_endpoint(
+    'https://585a4a70-5434-4747-950c-595c987cbc1d-eu-west-1.apps.astra.datastax.com',
+    keyspace=KEYSPACE
+)
+
+
+# ============================================================
+# INGEST
+# ============================================================
+
 @app.post("/ingest")
-def ingest():
+def ingest_endpoint():
     try:
         ingest_data()
         return {"status": "Ingestion started"}
@@ -22,40 +51,57 @@ def ingest():
         return {"status": "Ingestion failed", "error": str(e)}
 
 
+# ============================================================
+# SILVER
+# ============================================================
+
 @app.post("/silver")
-def silver():
+def silver_endpoint():
     try:
-        silver()
+        run_silver()
         return {"status": "Silver layer processing started"}
     except Exception as e:
         return {"status": "Silver processing failed", "error": str(e)}
 
 
+# ============================================================
+# SERVING
+# ============================================================
+
 @app.post("/serving")
-def serving():
+def serving_endpoint():
     return {"status": "Serving layer processing started"}
 
 
+# ============================================================
+# QUERIES
+# ============================================================
+
 @app.post("/query/costs-daily")
-def query_costs_daily(req: Query1Request):
-    query1()
+def query_costs_daily_endpoint(req: Query1Request):
+    result = run_query1(req)
+    return result
 
 
 @app.post("/query/top-services")
-def query_top_services(req: Query2Request):
-    query2()
+def query_top_services_endpoint(req: Query2Request):
+    result = run_query2(req)
+    return result
 
 
 @app.post("/query/sla-evolution")
-def query_sla_evolution(req: Query3Request):
-    query3()
+def query_sla_evolution_endpoint(req: Query3Request):
+    result = retrieve_query3_results()
+    return result
 
 
 @app.post("/query/monthly-revenue")
-def query_monthly_revenue(req: Query4Request):
-    query4()
+def query_monthly_revenue_endpoint(req: Query4Request):
+    result = run_query4(req)
+    return result
 
 
 @app.post("/query/genai-tokens")
-def query_genai_tokens(req: Query5Request):
-    query5()
+def query_genai_tokens_endpoint(req: Query5Request):
+    result = run_query5(req)
+    return result

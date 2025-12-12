@@ -3,6 +3,7 @@ import requests
 import pandas as pd
 from datetime import date, timedelta
 
+
 API_URL = "http://localhost:8000"
 
 st.set_page_config(page_title="Analytics Dashboard", layout="wide")
@@ -101,21 +102,22 @@ with tab3:
     st.header("🚨 Tickets Críticos & SLA Breach")
 
     with st.container(border=True):
-        org = st.text_input("Organización", key="q3_org")
+        start = st.date_input("Fecha inicio", key="q3_start")
+        end = st.date_input("Fecha fin", key="q3_end")
         run = st.button("▶ Run Query", key="run_q3")
 
     if run:
-        payload = {"organization": org}
+        payload = {"start_date": str(start), "end_date": str(end)}
         res = requests.post(f"{API_URL}/query/sla-evolution", json=payload).json()
 
-        df = pd.DataFrame(res["days"])
+        df = pd.DataFrame(res)
 
-        st.subheader("📉 Critical Tickets Over Time")
-        show_chart(df, "date", "critical_tickets")
+        # st.subheader("📉 Critical Tickets Over Time")
+        # show_chart(df, "date", "critical_tickets")
 
-        st.subheader("⚠ SLA Breach Rate (%)")
-        df["SLA_breach_%"] = df["sla_breach_rate"] * 100
-        show_chart(df, "date", "SLA_breach_%")
+        # st.subheader("⚠ SLA Breach Rate (%)")
+        # df["SLA_breach_%"] = df["sla_breach_rate"] * 100
+        # show_chart(df, "date", "SLA_breach_%")
 
         st.subheader("📋 Detailed Table")
         show_table(df)
