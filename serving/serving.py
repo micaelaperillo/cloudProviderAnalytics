@@ -22,7 +22,6 @@ spark = SparkSession.builder \
 
 spark.sparkContext.setLogLevel("INFO")
 
-
 # paths
 datalake_path = 'datalake'
 gold_path = f"{datalake_path}/gold"
@@ -66,17 +65,7 @@ CREATE TABLE IF NOT EXISTS org_daily_usage_by_service (
 ) WITH CLUSTERING ORDER BY (usage_date DESC, service ASC);
 """
 
-# create_table_3 = """
-# CREATE TABLE IF NOT EXISTS critical_tickets_evolution_sla_rate_daily (
-#     date date,
-#     breach_count int,
-#     solved_count int,
-#     critical_ticket_count int,
-#     breach_rate double,
-#     PRIMARY KEY (date)
-# ) WITH CLUSTERING ORDER BY (date DESC);
-# """
-
+# create_table_3 = "critical_tickets_evolution_sla_rate_daily"
 table_names = ['critical_tickets_evolution_sla_rate_daily', 'genai_tokens_cost_daily']
 astra_tables = db.list_collection_names()
 for col_name in table_names:
@@ -93,15 +82,7 @@ def map_critical_tickets(row):
         "breach_rate": float(row["breach_rate"])
     }
 
-# # TABLA 5: genai_tokens_cost_daily
-# create_table_5 = """
-# CREATE TABLE IF NOT EXISTS genai_tokens_cost_daily (
-#     usage_date DATE,
-#     total_genai_tokens BIGINT,
-#     total_genai_cost_usd DOUBLE,
-#     PRIMARY KEY (usage_date)
-# ) WITH CLUSTERING ORDER BY (usage_date DESC)
-# """
+# TABLA 5: genai_tokens_cost_daily
 db.create_collection('genai_tokens_cost_daily')
 def map_genai_tokens(row):
     return {
@@ -153,20 +134,6 @@ def load_to_cassandra(parquet_path, table_name, description, mapping_function):
         return False
 
 
-# # CARGAR MART 1: org_daily_usage_by_service
-# load_to_cassandra(
-#     f"{datalake_path}/gold/finops/org_daily_usage_by_service",
-#     "org_daily_usage_by_service",
-#     "MART 1 - FinOps Usage"
-# )
-
-# # CARGAR MART 2: revenue_by_org_month
-# load_to_cassandra(
-#     f"{datalake_path}/gold/finops/revenue_by_org_month",
-#     "revenue_by_org_month",
-#     "MART 2 - FinOps Revenue"
-# )
-
 # CARGAR Query 3: critical_tickets_evolution_sla_rate_daily
 load_to_cassandra(
     critical_tickets_evolution_sla_rate_daily_path,
@@ -174,13 +141,6 @@ load_to_cassandra(
     "Query 3 - Critical Tickets Evolution & SLA Rate",
     map_critical_tickets
 )
-
-# # CARGAR MART 4: tickets_by_org_date
-# load_to_cassandra(
-#     f"{datalake_path}/gold/support/tickets_by_org_date",
-#     "tickets_by_org_date",
-#     "MART 4 - Support Tickets"
-# )
 
 # CARGAR MART 5: genai_tokens_by_org_date
 load_to_cassandra(
@@ -197,11 +157,17 @@ def fetch_all_docs(collection_name):
     docs = [doc for doc in results]  # cada doc es el JSON plano
     return docs
 
+def retrieve_query3_results():
+    return fetch_all_docs('critical_tickets_evolution_sla_rate_daily')
+
+def retrieve_query5_results():
+    return fetch_all_docs('genai_tokens_cost_daily')
+
 spark.stop()
 
 if __name__ == "__main__":
-    result_query3 = fetch_all_docs('critical_tickets_evolution_sla_rate_daily')
-    result_query5 = fetch_all_docs('genai_tokens_cost_daily')
+    result_query3 = retrieve_query3_results()
+    result_query5 = retrieve_query5_results()
     for result in result_query3:
         print(result)
     for result in result_query5:
