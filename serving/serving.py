@@ -2,6 +2,8 @@ import os
 from dotenv import load_dotenv
 from pyspark.sql import SparkSession
 from astrapy import DataAPIClient
+from connect_database import db_session
+from cassandra import ConsistencyLevel
 
 # =====================================================================
 # SPARK FACTORY (NO INICIALIZAR SPARK EN IMPORT)
@@ -31,6 +33,15 @@ db = client.get_database_by_api_endpoint(
     "https://585a4a70-5434-4747-950c-595c987cbc1d-eu-west-1.apps.astra.datastax.com",
     keyspace=KEYSPACE
 )
+
+# session = db_session()
+
+# KEYSPACE = "datalake"
+# def keyspaces():
+#     rows = session.execute("SELECT keyspace_name FROM system_schema.keyspaces;")
+#     print("KEYSPACES:")
+#     for row in rows:
+#         print(row.keyspace_name)
 
 # =====================================================================
 # FETCH HELPERS (USED BY FASTAPI)
