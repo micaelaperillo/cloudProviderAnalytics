@@ -20,8 +20,7 @@ spark = SparkSession.builder \
             "com.datastax.spark:spark-cassandra-connector_2.12:3.4.1") \
     .getOrCreate()
 
-spark.sparkContext.setLogLevel("ERROR")
-print("✓ Spark reiniciado con Cassandra Connector")
+spark.sparkContext.setLogLevel("INFO")
 
 
 # paths
@@ -37,10 +36,7 @@ genai_tokens_cost_daily_path = f"{gold_path}/finops/genai_tokens_cost_daily"
 
 load_dotenv()
 
-ASTRA_CLIENT_ID = os.getenv("ASTRA_CLIENT_ID")
-ASTRA_CLIENT_SECRET = os.getenv("ASTRA_CLIENT_SECRET")
 ASTRA_TOKEN = os.getenv("ASTRA_TOKEN")
-ASTRA_SECURE_BUNDLE_PATH = os.getenv("ASTRA_SECURE_BUNDLE_PATH", "secure-connect-big-data-tp.zip")
 KEYSPACE = os.getenv("KEYSPACE", "datalake")
 
 client = DataAPIClient(ASTRA_TOKEN)
@@ -48,42 +44,6 @@ db = client.get_database_by_api_endpoint(
     'https://585a4a70-5434-4747-950c-595c987cbc1d-eu-west-1.apps.astra.datastax.com',
     keyspace=KEYSPACE
 )
-
-db.create_collection('artistas')
-print(f'Db collections: {db.list_collections()}')
-
-bundle_exists = os.path.exists(ASTRA_SECURE_BUNDLE_PATH)
-print(f"\n✓ Verificando Secure Bundle:")
-print(f"  - Ruta: {ASTRA_SECURE_BUNDLE_PATH}")
-print(f"  - Existe: {'✓ SÍ' if bundle_exists else '✗ NO'}")
-cloud_config = {'secure_connect_bundle': ASTRA_SECURE_BUNDLE_PATH}
-
-
-auth_provider = PlainTextAuthProvider(ASTRA_CLIENT_ID, ASTRA_CLIENT_SECRET)
-cluster = Cluster(cloud=cloud_config, auth_provider=auth_provider)
-session = cluster.connect()
-
-print("✓ Conectado a AstraDB para crear tablas")
-
-# Crear keyspace
-create_keyspace_query = f"""
-CREATE KEYSPACE IF NOT EXISTS {KEYSPACE}
-WITH replication = {{'class': 'NetworkTopologyStrategy', 'datacenter1': 3}}
-"""
-session.execute(create_keyspace_query)
-
-# Configurar Spark para conectarse a AstraDB
-spark.conf.set(f"spark.cassandra.connection.config.cloud.path", ASTRA_SECURE_BUNDLE_PATH)
-spark.conf.set(f"spark.cassandra.auth.username", ASTRA_CLIENT_ID)
-spark.conf.set(f"spark.cassandra.auth.password", ASTRA_CLIENT_SECRET)
-spark.conf.set(f"spark.cassandra.connection.ssl.enabledAlgorithms", "TLS_RSA_WITH_AES_128_CBC_SHA,TLS_RSA_WITH_AES_256_CBC_SHA")
-
-# Para AstraDB específicamente
-spark.conf.set("spark.cassandra.connection.ssl.enabled", "true")
-spark.conf.set("spark.cassandra.output.consistency.level", "LOCAL_QUORUM")
-
-print("✓ Configuración de Spark para AstraDB completada")
-
 
 # --------------------------------------------------------------------------------
 # Crear tablas en Cassandra usando CQL
@@ -105,113 +65,91 @@ CREATE TABLE IF NOT EXISTS org_daily_usage_by_service (
     PRIMARY KEY ((org_id), usage_date, service)
 ) WITH CLUSTERING ORDER BY (usage_date DESC, service ASC);
 """
-session.execute(create_table_1)
-print("✓ Tabla org_daily_usage_by_service creada")
 
-create_table_3 = """
-CREATE TABLE IF NOT EXISTS critical_tickets_evolution_sla_rate_daily (
-    date date,
-    breach_count int,
-    solved_count int,
-    critical_ticket_count int,
-    breach_rate double,
-    PRIMARY KEY (date)
-) WITH CLUSTERING ORDER BY (date DESC);
-"""
-session.execute(create_table_1)
-print("✓ Tabla org_daily_usage_by_service creada")
-
-# # TABLA 3: cost_anomaly_mart
 # create_table_3 = """
-# CREATE TABLE IF NOT EXISTS cost_anomaly_mart (
-#     org_id TEXT,
-#     usage_date DATE,
-#     service TEXT,
-#     daily_cost DOUBLE,
-#     z_score DOUBLE,
-#     anomaly_score DOUBLE,
-#     is_anomaly BOOLEAN,
-#     last_updated TIMESTAMP,
-#     PRIMARY KEY ((org_id, usage_date), service)
-# ) WITH CLUSTERING ORDER BY (service ASC)
+# CREATE TABLE IF NOT EXISTS critical_tickets_evolution_sla_rate_daily (
+#     date date,
+#     breach_count int,
+#     solved_count int,
+#     critical_ticket_count int,
+#     breach_rate double,
+#     PRIMARY KEY (date)
+# ) WITH CLUSTERING ORDER BY (date DESC);
 # """
-# session.execute(create_table_3)
-# print("✓ Tabla cost_anomaly_mart creada")
 
-# # TABLA 4: tickets_by_org_date
-# create_table_4 = """
-# CREATE TABLE IF NOT EXISTS tickets_by_org_date (
-#     org_id TEXT,
-#     ticket_date DATE,
-#     severity TEXT,
-#     ticket_count BIGINT,
-#     sla_breach_count BIGINT,
-#     sla_breach_rate DOUBLE,
-#     avg_csat DOUBLE,
-#     unique_tickets BIGINT,
-#     avg_resolution_hours DOUBLE,
-#     last_updated TIMESTAMP,
-#     PRIMARY KEY ((org_id, ticket_date), severity)
-# ) WITH CLUSTERING ORDER BY (severity ASC)
-# """
-# session.execute(create_table_4)
-# print("✓ Tabla tickets_by_org_date creada")
+table_names = ['critical_tickets_evolution_sla_rate_daily', 'genai_tokens_cost_daily']
+astra_tables = db.list_collection_names()
+for col_name in table_names:
+    if col_name in astra_tables:
+        db.drop_collection(col_name)
 
-# # TABLA 5: genai_tokens_by_org_date
+db.create_collection('critical_tickets_evolution_sla_rate_daily')
+def map_critical_tickets(row):
+    return {
+        "date": str(row["date"]),  # convertimos a texto
+        "breach_count": int(row["breach_count"]),
+        "solved_count": int(row["solved_count"]),
+        "critical_ticket_count": int(row["critical_ticket_count"]),
+        "breach_rate": float(row["breach_rate"])
+    }
+
+# # TABLA 5: genai_tokens_cost_daily
 # create_table_5 = """
-# CREATE TABLE IF NOT EXISTS genai_tokens_by_org_date (
-#     org_id TEXT,
+# CREATE TABLE IF NOT EXISTS genai_tokens_cost_daily (
 #     usage_date DATE,
-#     total_tokens BIGINT,
-#     total_requests BIGINT,
-#     avg_tokens_per_request DOUBLE,
-#     estimated_cost_usd DOUBLE,
-#     last_updated TIMESTAMP,
-#     PRIMARY KEY (org_id, usage_date)
+#     total_genai_tokens BIGINT,
+#     total_genai_cost_usd DOUBLE,
+#     PRIMARY KEY (usage_date)
 # ) WITH CLUSTERING ORDER BY (usage_date DESC)
 # """
-# session.execute(create_table_5)
-# print("✓ Tabla genai_tokens_by_org_date creada")
+db.create_collection('genai_tokens_cost_daily')
+def map_genai_tokens(row):
+    return {
+        "usage_date": str(row["usage_date"]),
+        "total_genai_tokens": int(row["total_genai_tokens"]),
+        "total_genai_cost_usd": float(row["total_genai_cost_usd"])
+    }
 
-# Cerrar sesión de creación de tablas
-
-print("✓ Todas las tablas creadas, conexión CQL cerrada")
 
 
 # --------------------------------------------------------------------------------
 # Cargar datos desde Gold (Parquet) a Cassandra usando Spark Connector
 # --------------------------------------------------------------------------------
 
-print("\\n" + "="*80)
-print("CARGANDO DATOS A CASSANDRA CON SPARK CONNECTOR")
-print("="*80)
-
 # Función helper para cargar con manejo de errores
-def load_to_cassandra(parquet_path, table_name, description):
+def load_to_cassandra(parquet_path, table_name, description, mapping_function):
     """
-    Carga datos desde Parquet a Cassandra usando Spark Cassandra Connector
+    Carga datos desde Parquet a Cassandra usando DataAPIClient
+    Args: 
+        parquet_path (str): Ruta al archivo Parquet
+        table_name (str): Nombre de la tabla en Cassandra
+        description (str): Descripción para logs
+        mapping_function (func): Función para mapear filas a diccionarios con models
     """
     try:
-        print(f"\\n[{description}] Cargando datos...")
+        print(f"\n[{description}] Cargando datos desde {parquet_path} a tabla {table_name}...")
 
         # Leer desde Gold
         df = spark.read.parquet(parquet_path)
+        df.show(5, truncate=False)
         row_count = df.count()
-
         print(f"  Filas leídas: {row_count}")
 
-        # Escribir a Cassandra
-        df.write \
-            .format("org.apache.spark.sql.cassandra") \
-            .mode("append") \
-            .options(table=table_name, keyspace=KEYSPACE) \
-            .save()
+        # Convertir a lista de diccionarios
+        records = df.collect()
+        docs = [mapping_function(r) for r in records]
+
+        # Obtener la tabla de Cassandra
+        table = db[table_name]
+        table.insert_many(docs)
 
         print(f"✓ {row_count} filas cargadas en {table_name}")
         return True
 
     except Exception as e:
         print(f"✗ Error cargando {table_name}: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 
@@ -233,7 +171,8 @@ def load_to_cassandra(parquet_path, table_name, description):
 load_to_cassandra(
     critical_tickets_evolution_sla_rate_daily_path,
     "critical_tickets_evolution_sla_rate_daily",
-    "Query 3 - Critical Tickets Evolution & SLA Rate"
+    "Query 3 - Critical Tickets Evolution & SLA Rate",
+    map_critical_tickets
 )
 
 # # CARGAR MART 4: tickets_by_org_date
@@ -247,206 +186,23 @@ load_to_cassandra(
 load_to_cassandra(
     genai_tokens_cost_daily_path,
     "genai_tokens_cost_daily",
-    "MART 5 - GenAI Usage"
+    "MART 5 - GenAI Usage",
+    map_genai_tokens
 )
 
 
-# --------------------------------------------------------------------------------
-# Verificar datos cargados usando Spark SQL
-# --------------------------------------------------------------------------------
+def fetch_all_docs(collection_name):
+    col = db[collection_name]
+    results = col.find({})
+    docs = [doc for doc in results]  # cada doc es el JSON plano
+    return docs
 
-# print("\\n" + "="*80)
-# print("VERIFICANDO DATOS EN CASSANDRA")
-# print("="*80)
-
-# # Leer de vuelta desde Cassandra para verificar
-# print("\\n--- Verificación MART 1: org_daily_usage_by_service ---")
-# df_verify1 = spark.read \
-#     .format("org.apache.spark.sql.cassandra") \
-#     .options(table="org_daily_usage_by_service", keyspace=KEYSPACE) \
-#     .load()
-
-# print(f"Total de filas en Cassandra: {df_verify1.count()}")
-# df_verify1.show(5, truncate=False)
-
-
-# print("\\n--- Verificación MART 3: cost_anomaly_mart ---")
-# df_verify3 = spark.read \
-#     .format("org.apache.spark.sql.cassandra") \
-#     .options(table="cost_anomaly_mart", keyspace=KEYSPACE) \
-#     .load()
-
-# print(f"Total de filas en Cassandra: {df_verify3.count()}")
-# df_verify3.filter(col("is_anomaly") == True).show(5, truncate=False)
-
-
-# print("\\n--- Verificación MART 5: genai_tokens_by_org_date ---")
-# df_verify5 = spark.read \
-#     .format("org.apache.spark.sql.cassandra") \
-#     .options(table="genai_tokens_by_org_date", keyspace=KEYSPACE) \
-#     .load()
-
-# print(f"Total de filas en Cassandra: {df_verify5.count()}")
-# df_verify5.orderBy(col("total_tokens").desc()).show(5, truncate=False)
-
-
-# --------------------------------------------------------------------------------
-# Queries de demostración (las 5 obligatorias del proyecto)
-# --------------------------------------------------------------------------------
-
-print("\\n" + "="*80)
-print("QUERIES DE DEMOSTRACIÓN (Requisito del Proyecto)")
-print("="*80)
-
-# # QUERY 1: Costos y requests diarios por org y servicio en un rango de fechas
-# print("\\n[QUERY 1] Costos y requests diarios por org y servicio (últimos 7 días)")
-# df_query1 = spark.read \
-#     .format("org.apache.spark.sql.cassandra") \
-#     .options(table="org_daily_usage_by_service", keyspace=KEYSPACE) \
-#     .load() \
-#     .filter(col("usage_date") >= date_sub(current_date(), 7)) \
-#     .select("org_id", "usage_date", "service", "daily_cost_usd", "total_requests") \
-#     .orderBy(col("daily_cost_usd").desc())
-
-# df_query1.show(10, truncate=False)
-
-
-# # QUERY 2: Top-N servicios por costo acumulado en los últimos 14 días
-# print("\\n[QUERY 2] Top-5 servicios por costo acumulado (últimos 14 días)")
-# df_query2 = spark.read \
-#     .format("org.apache.spark.sql.cassandra") \
-#     .options(table="org_daily_usage_by_service", keyspace=KEYSPACE) \
-#     .load() \
-#     .filter(col("usage_date") >= date_sub(current_date(), 14)) \
-#     .groupBy("service") \
-#     .agg(sum("daily_cost_usd").alias("total_cost_14d")) \
-#     .orderBy(col("total_cost_14d").desc()) \
-#     .limit(5)
-
-# df_query2.show(truncate=False)
-
-
-# # QUERY 3: Evolución de tickets críticos y tasa de SLA breach por día (últimos 30 días)
-# print("\\n[QUERY 3] Tickets críticos y SLA breach rate (últimos 30 días)")
-def retrieve_query3():
-    try:
-        df_query3 = spark.read \
-            .format("org.apache.spark.sql.cassandra") \
-            .options(table="critical_tickets_evolution_sla_rate_daily", keyspace=KEYSPACE) \
-            .load() \
-            .filter(col("ticket_date") >= date_sub(current_date(), 30)) \
-            .filter(col("severity").isin(["critical", "high"])) \
-            .groupBy("ticket_date") \
-            .agg(
-                sum("ticket_count").alias("total_critical_tickets"),
-                avg("sla_breach_rate").alias("avg_sla_breach_rate")
-            ) \
-            .orderBy("ticket_date")
-
-        df_query3.show(30, truncate=False)
-    except Exception as e:
-        print(f"⚠ Datos de tickets no disponibles: {e}")
-
-
-# # QUERY 4: Revenue mensual con créditos/impuestos aplicados (normalizado a USD)
-# print("\\n[QUERY 4] Revenue mensual por organización (normalizado a USD)")
-# try:
-#     df_query4 = spark.read \
-#         .format("org.apache.spark.sql.cassandra") \
-#         .options(table="revenue_by_org_month", keyspace=KEYSPACE) \
-#         .load() \
-#         .select("org_id", "month", "revenue_usd", "total_credits_usd",
-#                 "total_tax_usd", "net_revenue_usd") \
-#         .orderBy(col("net_revenue_usd").desc())
-
-#     df_query4.show(10, truncate=False)
-# except Exception as e:
-#     print(f"⚠ Datos de revenue no disponibles: {e}")
-
-
-# # QUERY 5: Tokens GenAI y costo estimado por día
-# print("\\n[QUERY 5] Tokens GenAI y costo estimado por día (últimos 30 días)")
-def retrieve_query5():
-    df_query5 = spark.read \
-        .format("org.apache.spark.sql.cassandra") \
-        .options(table="genai_tokens_cost_daily", keyspace=KEYSPACE) \
-        .load() \
-        .filter(col("usage_date") >= date_sub(current_date(), 30)) \
-        .groupBy("usage_date") \
-        .agg(
-            sum("total_tokens").alias("daily_total_tokens"),
-            sum("estimated_cost_usd").alias("daily_estimated_cost"),
-            avg("avg_tokens_per_request").alias("avg_tokens_per_req")
-        ) \
-        .orderBy("usage_date")
-
-# df_query5.show(30, truncate=False)
-
-
-# --------------------------------------------------------------------------------
-# Resumen final
-# --------------------------------------------------------------------------------
-
-# print("\\n" + "="*80)
-# print("RESUMEN DE CARGA")
-# print("="*80)
-
-# tables_summary = [
-#     "org_daily_usage_by_service",
-#     "revenue_by_org_month",
-#     "cost_anomaly_mart",
-#     "tickets_by_org_date",
-#     "genai_tokens_by_org_date"
-# ]
-
-# for table in tables_summary:
-#     try:
-#         count = spark.read \
-#             .format("org.apache.spark.sql.cassandra") \
-#             .options(table=table, keyspace=KEYSPACE) \
-#             .load() \
-#             .count()
-#         print(f"✓ {table}: {count:,} filas")
-#     except Exception as e:
-#         print(f"✗ {table}: Error - {e}")
-
-# print("\\n✓ Pipeline completado: Datos cargados y verificados en Cassandra")
-
-
-# print("\n✓ Código de Cassandra con Spark Connector preparado")
-# print("\n" + "="*80)
-# print("PASOS PARA CONFIGURAR ASTRADB")
-# print("="*80)
-# print("""
-# 1. Crear cuenta en AstraDB: https://astra.datastax.com
-
-# 2. Crear una nueva base de datos:
-#    - Database name: cloud-analytics-db
-#    - Keyspace: cloud_analytics
-#    - Provider: GCP (recomendado para Colab)
-#    - Region: us-east1 (o más cercana)
-
-# 3. Crear Token de aplicación:
-#    - Settings → Tokens → Generate Token
-#    - Role: Database Administrator
-#    - Guardar Client ID y Client Secret
-
-# 4. Descargar Secure Connect Bundle:
-#    - Connect → Drivers → Download Bundle
-#    - Subir el archivo .zip a tu Google Drive
-#    - Actualizar ASTRA_SECURE_BUNDLE_PATH
-
-# 5. Actualizar variables en el código:
-#    - ASTRA_CLIENT_ID = "tu_client_id"
-#    - ASTRA_CLIENT_SECRET = "tu_client_secret"
-#    - ASTRA_SECURE_BUNDLE_PATH = "/content/drive/MyDrive/..."
-#    - ASTRA_DB_ID = "tu_database_id" (aparece en la URL)
-
-# 6. Descomentar el código y ejecutar
-
-# NOTA: El conector Spark para Cassandra es MÁS EFICIENTE que el driver Python
-# para grandes volúmenes de datos, ya que distribuye la carga en paralelo.
-# """)
-
-cluster.shutdown()
 spark.stop()
+
+if __name__ == "__main__":
+    result_query3 = fetch_all_docs('critical_tickets_evolution_sla_rate_daily')
+    result_query5 = fetch_all_docs('genai_tokens_cost_daily')
+    for result in result_query3:
+        print(result)
+    for result in result_query5:
+        print(result)
