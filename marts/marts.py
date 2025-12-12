@@ -65,6 +65,9 @@ def query2():
 
 
 def query3():
+    """
+    Daily evolution of critical tickets and SLA breach rate
+    """
     support_tickets_df = spark.read.parquet(silver_path_support_tickets_clean)
 
     critical_tickets_evolution_sla_rate_daily = support_tickets_df \
@@ -86,6 +89,9 @@ def query3():
     critical_tickets_evolution_sla_rate_daily.write \
         .mode("overwrite") \
         .parquet(f"{gold_path}/finops/critical_tickets_evolution_sla_rate_daily")
+    
+    critical_tickets_evolution_sla_rate_daily.printSchema()
+    return critical_tickets_evolution_sla_rate_daily
 
 
 def query4():
@@ -110,6 +116,9 @@ def query4():
 
 
 def query5():
+    """
+    Daily total of GenAI tokens used and their associated cost in USD
+    """
     silver_path_events_clean = spark.read.parquet(silver_path_usage_events_clean)
     genai_tokens_cost_daily = silver_path_events_clean \
         .filter(col("service") == "genai") \
@@ -122,3 +131,12 @@ def query5():
     genai_tokens_cost_daily.write \
         .mode("overwrite") \
         .parquet(f"{gold_path}/finops/genai_tokens_cost_daily")
+    
+    genai_tokens_cost_daily.printSchema()
+    return genai_tokens_cost_daily
+    
+
+if __name__ == "__main__":
+    query1()
+    query3()
+    query5()
