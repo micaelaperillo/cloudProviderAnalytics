@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 from pyspark.sql import SparkSession
 from cassandra.cluster import Cluster
 from cassandra.auth import PlainTextAuthProvider
+from astrapy import DataAPIClient
 
 # --------------------------------------------------------------------------------
 # Instalar y configurar Spark Cassandra Connector
@@ -42,6 +43,15 @@ ASTRA_TOKEN = os.getenv("ASTRA_TOKEN")
 ASTRA_SECURE_BUNDLE_PATH = os.getenv("ASTRA_SECURE_BUNDLE_PATH", "secure-connect-big-data-tp.zip")
 KEYSPACE = os.getenv("KEYSPACE", "datalake")
 
+client = DataAPIClient(ASTRA_TOKEN)
+db = client.get_database_by_api_endpoint(
+    'https://585a4a70-5434-4747-950c-595c987cbc1d-eu-west-1.apps.astra.datastax.com',
+    keyspace=KEYSPACE
+)
+
+db.create_collection('artistas')
+print(f'Db collections: {db.list_collections()}')
+
 bundle_exists = os.path.exists(ASTRA_SECURE_BUNDLE_PATH)
 print(f"\n✓ Verificando Secure Bundle:")
 print(f"  - Ruta: {ASTRA_SECURE_BUNDLE_PATH}")
@@ -60,26 +70,7 @@ create_keyspace_query = f"""
 CREATE KEYSPACE IF NOT EXISTS {KEYSPACE}
 WITH replication = {{'class': 'NetworkTopologyStrategy', 'datacenter1': 3}}
 """
-# Verificar conexión
-row = session.execute("select release_version from system.local").one()
-if row:
-    print(f"  ✓ Conectado exitosamente")
-    print(f"  - Versión Cassandra: {row[0]}")
-else:
-    print(f"  ✗ Conexión fallida - Sin respuesta del servidor")
-
-# Listar keyspaces disponibles
-print(f"\n✓ Keyspaces disponibles:")
-rows = session.execute("SELECT keyspace_name FROM system_schema.keyspaces")
-for row in rows:
-    print(f"  - {row.keyspace_name}")
-
-print(f"\n✓ Validación completada exitosamente")
-
-# Tabla para queries 1 y 2
-
-# session.execute(create_table_1)
-print("✓ Tabla org_daily_usage_by_service creada")
+session.execute(create_keyspace_query)
 
 # Configurar Spark para conectarse a AstraDB
 spark.conf.set(f"spark.cassandra.connection.config.cloud.path", ASTRA_SECURE_BUNDLE_PATH)
@@ -97,14 +88,6 @@ print("✓ Configuración de Spark para AstraDB completada")
 # --------------------------------------------------------------------------------
 # Crear tablas en Cassandra usando CQL
 # --------------------------------------------------------------------------------
-
-try:
-    session.execute(create_keyspace_query)
-    print(f"✓ Keyspace '{KEYSPACE}' verificado/creado")
-except Exception as e:
-    print(f"⚠ Keyspace ya existe o error: {e}")
-
-session.set_keyspace(KEYSPACE)
 
 # TABLA 1: org_daily_usage_by_service
 
@@ -246,10 +229,10 @@ def load_to_cassandra(parquet_path, table_name, description):
 #     "MART 2 - FinOps Revenue"
 # )
 
-# CARGAR MART 3: cost_anomaly_mart
+# CARGAR Query 3: critical_tickets_evolution_sla_rate_daily
 load_to_cassandra(
     critical_tickets_evolution_sla_rate_daily_path,
-    "cost_anomaly_mart",
+    "critical_tickets_evolution_sla_rate_daily",
     "Query 3 - Critical Tickets Evolution & SLA Rate"
 )
 
@@ -263,7 +246,7 @@ load_to_cassandra(
 # CARGAR MART 5: genai_tokens_by_org_date
 load_to_cassandra(
     genai_tokens_cost_daily_path,
-    "genai_tokens_by_org_date",
+    "genai_tokens_cost_daily",
     "MART 5 - GenAI Usage"
 )
 
@@ -345,23 +328,24 @@ print("="*80)
 
 # # QUERY 3: Evolución de tickets críticos y tasa de SLA breach por día (últimos 30 días)
 # print("\\n[QUERY 3] Tickets críticos y SLA breach rate (últimos 30 días)")
-# try:
-#     df_query3 = spark.read \
-#         .format("org.apache.spark.sql.cassandra") \
-#         .options(table="tickets_by_org_date", keyspace=KEYSPACE) \
-#         .load() \
-#         .filter(col("ticket_date") >= date_sub(current_date(), 30)) \
-#         .filter(col("severity").isin(["critical", "high"])) \
-#         .groupBy("ticket_date") \
-#         .agg(
-#             sum("ticket_count").alias("total_critical_tickets"),
-#             avg("sla_breach_rate").alias("avg_sla_breach_rate")
-#         ) \
-#         .orderBy("ticket_date")
+def retrieve_query3():
+    try:
+        df_query3 = spark.read \
+            .format("org.apache.spark.sql.cassandra") \
+            .options(table="critical_tickets_evolution_sla_rate_daily", keyspace=KEYSPACE) \
+            .load() \
+            .filter(col("ticket_date") >= date_sub(current_date(), 30)) \
+            .filter(col("severity").isin(["critical", "high"])) \
+            .groupBy("ticket_date") \
+            .agg(
+                sum("ticket_count").alias("total_critical_tickets"),
+                avg("sla_breach_rate").alias("avg_sla_breach_rate")
+            ) \
+            .orderBy("ticket_date")
 
-#     df_query3.show(30, truncate=False)
-# except Exception as e:
-#     print(f"⚠ Datos de tickets no disponibles: {e}")
+        df_query3.show(30, truncate=False)
+    except Exception as e:
+        print(f"⚠ Datos de tickets no disponibles: {e}")
 
 
 # # QUERY 4: Revenue mensual con créditos/impuestos aplicados (normalizado a USD)
@@ -382,18 +366,19 @@ print("="*80)
 
 # # QUERY 5: Tokens GenAI y costo estimado por día
 # print("\\n[QUERY 5] Tokens GenAI y costo estimado por día (últimos 30 días)")
-# df_query5 = spark.read \
-#     .format("org.apache.spark.sql.cassandra") \
-#     .options(table="genai_tokens_by_org_date", keyspace=KEYSPACE) \
-#     .load() \
-#     .filter(col("usage_date") >= date_sub(current_date(), 30)) \
-#     .groupBy("usage_date") \
-#     .agg(
-#         sum("total_tokens").alias("daily_total_tokens"),
-#         sum("estimated_cost_usd").alias("daily_estimated_cost"),
-#         avg("avg_tokens_per_request").alias("avg_tokens_per_req")
-#     ) \
-#     .orderBy("usage_date")
+def retrieve_query5():
+    df_query5 = spark.read \
+        .format("org.apache.spark.sql.cassandra") \
+        .options(table="genai_tokens_cost_daily", keyspace=KEYSPACE) \
+        .load() \
+        .filter(col("usage_date") >= date_sub(current_date(), 30)) \
+        .groupBy("usage_date") \
+        .agg(
+            sum("total_tokens").alias("daily_total_tokens"),
+            sum("estimated_cost_usd").alias("daily_estimated_cost"),
+            avg("avg_tokens_per_request").alias("avg_tokens_per_req")
+        ) \
+        .orderBy("usage_date")
 
 # df_query5.show(30, truncate=False)
 
