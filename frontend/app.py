@@ -13,17 +13,20 @@ st.markdown("Use the tabs below to execute analytics queries.")
 
 st.sidebar.header("Pipelines")
 if st.sidebar.button("▶ Run Ingest"):
+    st.sidebar.info("Starting Ingest Pipeline")
     r = requests.post(f"{API_URL}/ingest")
-    st.sidebar.success(r.json().get("status", "Ingest started"))
+    st.sidebar.success(r.json().get("status", "Ingest pipeline successfully finished"))
+
 
 if st.sidebar.button("▶ Run Silver"):
+    st.sidebar.info("Starting Silver Layer Processing")
     r = requests.post(f"{API_URL}/silver")
-    st.sidebar.success(r.json().get("status", "Silver layer processing started"))
+    st.sidebar.success(r.json().get("status", "Silver layer processing successfully finished"))
 
 if st.sidebar.button("▶ Run Serving"):
+    st.sidebar.info("Starting Serving Layer Processing")
     r = requests.post(f"{API_URL}/serving")
-    st.sidebar.success(r.json().get("status", "Serving pipeline started"))
-
+    st.sidebar.success(r.json().get("status", "Serving pipeline successfully finished"))
 # Create tabs
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "📅 Daily Costs & Requests",

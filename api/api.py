@@ -12,13 +12,6 @@ from serving.serving import *  # si hay más funciones, importarlas con alias
 import os
 from ingest.ingest import ingest_data
 from silver.silver import silver as run_silver
-from marts.marts import (
-    query1 as run_query1,
-    query2 as run_query2,
-    query3 as run_query3,
-    query4 as run_query4,
-    query5 as run_query5
-)
 
 from astrapy import DataAPIClient
 from dotenv import load_dotenv
@@ -46,7 +39,7 @@ db = client.get_database_by_api_endpoint(
 def ingest_endpoint():
     try:
         ingest_data()
-        return {"status": "Ingestion started"}
+        return {"status": "Ingestion finished successfully"}
     except Exception as e:
         return {"status": "Ingestion failed", "error": str(e)}
 
@@ -59,7 +52,7 @@ def ingest_endpoint():
 def silver_endpoint():
     try:
         run_silver()
-        return {"status": "Silver layer processing started"}
+        return {"status": "Silver layer processing finished successfully"}
     except Exception as e:
         return {"status": "Silver processing failed", "error": str(e)}
 
@@ -70,8 +63,11 @@ def silver_endpoint():
 
 @app.post("/serving")
 def serving_endpoint():
-    run_serving_pipeline()
-    return {"status": "Serving layer processing started"}
+    try:
+        run_serving_pipeline()
+        return {"status": "Serving layer processing finished successfully"}
+    except Exception as e:
+        return {"status": "Serving processing failed", "error": str(e)}
 
 
 # ============================================================
