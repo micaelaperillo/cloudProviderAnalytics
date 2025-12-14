@@ -4,12 +4,12 @@ from typing import Optional
 class Query1Request(BaseModel):
     organization: str
     service: str
-    start_date: str
     end_date: str
 
 class Query2Request(BaseModel):
     organization: str
     top_n: int
+    end_date: str
 
 class Query3Request(BaseModel):
     start_date: str
