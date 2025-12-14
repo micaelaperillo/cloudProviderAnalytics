@@ -55,34 +55,36 @@ def fetch_all_docs(collection_name):
 def retrieve_query1_results(req: Query1Request):
     result = fetch_all_docs("org_daily_usage_by_service")
 
-    end_date = req.end_date
-    start_date = end_date - timedelta(days=14)
+    end_date = datetime.strptime(req.end_date, "%Y-%m-%d").date()
+    start_date = end_date - timedelta(days=30)
 
     #filter by org_id, services, date range
     filtered = []
     for doc in result:
+        doc_date = datetime.strptime(doc["usage_date"], "%Y-%m-%d").date()
         if doc["org_id"] == req.organization and \
             doc["service"] in req.service and \
-            start_date <= doc["usage_date"] <= end_date:
+            start_date <= doc_date <= end_date:
             filtered.append(doc)
 
     return filtered
 
 from collections import defaultdict
-from datetime import timedelta
+from datetime import timedelta, datetime
 
 def retrieve_query2_results(req: Query2Request):
     result = fetch_all_docs("org_daily_usage_by_service")
 
-    end_date = req.end_date
+    end_date = datetime.strptime(req.end_date, "%Y-%m-%d").date()
     start_date = end_date - timedelta(days=14)
 
     # acumular costos por servicio
     cost_by_service = defaultdict(float)
 
     for doc in result:
+        doc_date = datetime.strptime(doc["usage_date"], "%Y-%m-%d").date()
         if doc["org_id"] == req.organization and \
-           start_date <= doc["usage_date"] <= end_date:
+           start_date <= doc_date <= end_date:
             cost_by_service[doc["service"]] += doc["cost_usd"]
 
     # ordenar por costo acumulado y quedarse con los n mayores
