@@ -58,11 +58,7 @@ with tab1:
     with st.container(border=True):
         org = st.text_input("Organización", key="q1_org")
         service = st.text_input("Servicio", key="q1_service")
-        col1, col2 = st.columns(2)
-        with col1:
-            start = st.date_input("Fecha inicio", value=date.today() - timedelta(days=7), key="q1_start")
-        with col2:
-            end = st.date_input("Fecha fin", value=date.today(), key="q1_end")
+        end = st.date_input("Fecha fin", value=date.today(), key="q1_end")
 
         run = st.button("▶ Run Query", key="run_q1")
 
@@ -70,7 +66,6 @@ with tab1:
         payload = {
             "organization": org,
             "service": service,
-            "start_date": str(start),
             "end_date": str(end)
         }
         res = requests.post(f"{API_URL}/query/costs-daily", json=payload).json()
@@ -89,10 +84,15 @@ with tab2:
     with st.container(border=True):
         org = st.text_input("Organización", key="q2_org")
         top_n = st.number_input("Top-N", min_value=1, max_value=50, value=5, key="q2_topn")
+        end = st.date_input("Fecha fin", value=date.today(), key="q2_end")
         run = st.button("▶ Run Query", key="run_q2")
 
     if run:
-        payload = {"organization": org, "top_n": top_n}
+        payload = {
+            "organization": org, 
+            "top_n": top_n, 
+            "end_date": str(end)
+}
         res = requests.post(f"{API_URL}/query/top-services", json=payload).json()
 
         df = pd.DataFrame(res)
