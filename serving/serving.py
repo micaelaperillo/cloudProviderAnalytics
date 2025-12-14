@@ -52,27 +52,52 @@ def fetch_all_docs(collection_name):
 def retrieve_query1_results(req: Query1Request):
     result = fetch_all_docs("org_daily_usage_by_service")
 
+    end_date = datetime.strptime(req.end_date, "%Y-%m-%d").date()
+    start_date = end_date - timedelta(days=30)
+
     #filter by org_id, services, date range
     filtered = []
     for doc in result:
+        doc_date = datetime.strptime(doc["usage_date"], "%Y-%m-%d").date()
         if doc["org_id"] == req.organization and \
             doc["service"] in req.service and \
-            doc["usage_date"] >= req.start_date and doc["usage_date"] <= req.end_date:
+            start_date <= doc_date <= end_date:
             filtered.append(doc)
 
     return filtered
 
-def retrieve_query2_results(req: Query2Request):
-    result = fetch_all_docs("services_by_cum_cost_by_org")
+from collections import defaultdict
+from datetime import timedelta, datetime
 
-    #filter by org_id, top_n, last 14 days from reference_date
-    #TODO filtrar por ultimos 14 dias
-    filtered = []
+def retrieve_query2_results(req: Query2Request):
+    result = fetch_all_docs("org_daily_usage_by_service")
+
+    end_date = datetime.strptime(req.end_date, "%Y-%m-%d").date()
+    start_date = end_date - timedelta(days=14)
+
+    # acumular costos por servicio
+    cost_by_service = defaultdict(float)
+
     for doc in result:
-        if doc["org_id"] == req.organization:
-            filtered.append(doc)
-    filtered.sort(key=lambda x: x["revenue_usd"], reverse=True)
-    return filtered[:req.top_n]
+        doc_date = datetime.strptime(doc["usage_date"], "%Y-%m-%d").date()
+        if doc["org_id"] == req.organization and \
+           start_date <= doc_date <= end_date:
+            cost_by_service[doc["service"]] += doc["cost_usd"]
+
+    # ordenar por costo acumulado y quedarse con los n mayores
+    top_n = sorted(
+        cost_by_service.items(),
+        key=lambda x: x[1],
+        reverse=True
+    )[:req.top_n]
+
+    return [
+        {
+            "service": service,
+            "total_cost_usd": total_cost
+        }
+        for service, total_cost in top_n
+    ]
 
 def retrieve_query3_results(req: Query3Request):
     result = fetch_all_docs("critical_tickets_evolution_sla_rate_daily")
