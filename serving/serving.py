@@ -10,15 +10,12 @@ from api.models import *
 # SPARK FACTORY (NO INICIALIZAR SPARK EN IMPORT)
 # =====================================================================
 
-def get_spark():
-    return (
-        SparkSession.builder
-        .appName("Big Data - Cassandra Integration")
-        .master("local[*]")
-        .config("spark.jars.packages",
-                "com.datastax.spark:spark-cassandra-connector_2.12:3.4.1")
-        .getOrCreate()
-    )
+# spark = SparkSession.builder \
+#         .appName("Big Data - Cassandra Integration") \
+#         .master("local[*]") \
+#         .config("spark.jars.packages",
+#                 "com.datastax.spark:spark-cassandra-connector_2.12:3.4.1") \
+#         .getOrCreate()
 
 # =====================================================================
 # LOAD ENV + ASTRA DB CLIENT
@@ -102,7 +99,14 @@ def run_serving_pipeline():
     Ejecuta la carga Gold → Cassandra.
     Llamar manualmente, NO en imports.
     """
-    spark = get_spark()
+    spark = SparkSession.getActiveSession()
+    if not spark:
+        spark = SparkSession.builder \
+        .appName("Big Data - Cassandra Integration") \
+        .master("local[*]") \
+        .config("spark.jars.packages",
+                "com.datastax.spark:spark-cassandra-connector_2.12:3.4.1") \
+        .getOrCreate()
 
     datalake_path = "datalake"
     gold_path = f"{datalake_path}/gold"
@@ -211,8 +215,6 @@ def run_serving_pipeline():
     load_to_cassandra(critical_path, "critical_tickets_evolution_sla_rate_daily", map_critical_tickets)
     load_to_cassandra(revenue_by_org_month_usd_path, "revenue_by_org_month_usd", map_revenue_by_org_month_usd)
     load_to_cassandra(genai_path, "genai_tokens_cost_daily", map_genai_tokens)
-
-    spark.stop()
         
 if __name__ == "__main__":
     # ejecutar pipeline manualmente

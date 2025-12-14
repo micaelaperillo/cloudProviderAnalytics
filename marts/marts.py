@@ -9,14 +9,15 @@ import pyspark.sql.functions as F
 # SPARK FACTORY (NO CREAR SPARK EN IMPORT)
 # =====================================================================
 
-def get_spark():
-    return (
-        SparkSession.builder
-        .appName("Big Data Marts")
-        .master("local[*]")
-        .config("spark.jars.packages", "org.apache.hadoop:hadoop-aws:3.3.4")
-        .getOrCreate()
-    )
+spark = SparkSession.getActiveSession()
+if not spark:
+    spark = SparkSession.builder \
+    .appName("Big Data - Cassandra Integration") \
+    .master("local[*]") \
+    .config("spark.jars.packages",
+            "com.datastax.spark:spark-cassandra-connector_2.12:3.4.1") \
+    .getOrCreate()
+
 
 
 # =====================================================================
@@ -38,7 +39,6 @@ silver_path_support_tickets_clean = f"{silver_path}/support_tickets_clean"
 # =====================================================================
 
 def query1():
-    spark = get_spark()
 
     df = spark.read.parquet(silver_path_daily_usage)
 
@@ -69,7 +69,6 @@ def query1():
 
 
 def query2():
-    spark = get_spark()
 
     billing = spark.read.parquet(silver_path_billing_monthly_clean)
 
@@ -94,7 +93,6 @@ def query2():
 
 
 def query3():
-    spark = get_spark()
 
     df = spark.read.parquet(silver_path_support_tickets_clean)
 
@@ -121,7 +119,6 @@ def query3():
 
 
 def query4():
-    spark = get_spark()
 
     df = spark.read.parquet(silver_path_billing_monthly_clean)
 
@@ -144,7 +141,6 @@ def query4():
 
 
 def query5():
-    spark = get_spark()
 
     df = spark.read.parquet(silver_path_usage_events_clean)
 
@@ -173,8 +169,6 @@ def columns_with_nulls(df):
     return cols
 
 if __name__ == "__main__":
-    spark = get_spark()
-    
     df1 = query1()
     print("query1 tiene NULLs:", columns_with_nulls(df1))
     df1.select('total_requests', 'total_cpu_hours', 'total_storage_gb_hours').where(
