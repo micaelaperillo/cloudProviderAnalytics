@@ -127,6 +127,28 @@ def silver():
         count("*").alias("event_count")
     ).withColumn("last_updated", F.current_timestamp())
 
+    p99_by_service = (
+        usage_events_silver
+            .groupBy("service")
+            .agg(
+                F.expr(
+                    "percentile_approx(cost_usd_increment, 0.99)"
+                ).alias("p99_cost_usd_increment")
+            )
+    )
+
+    usage_events_silver = (
+        usage_events_silver
+            .join(p99_by_service, on="service", how="left")
+            .withColumn(
+                "cost_anomaly_flag_p99",
+                when(
+                    col("cost_usd_increment") > col("p99_cost_usd_increment") * 1.5,
+                    lit(1)
+                ).otherwise(lit(0))
+            )
+    )
+
     usage_events_silver.write \
         .mode("overwrite") \
         .partitionBy("usage_date") \
