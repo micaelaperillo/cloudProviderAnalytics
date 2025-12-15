@@ -53,7 +53,7 @@ def retrieve_query1_results(req: Query1Request):
     result = fetch_all_docs("org_daily_usage_by_service")
 
     end_date = datetime.strptime(req.end_date, "%Y-%m-%d").date()
-    start_date = end_date - timedelta(days=30)
+    start_date = datetime.strptime(req.start_date, "%Y-%m-%d").date()
 
     #filter by org_id, services, date range
     filtered = []
@@ -99,13 +99,17 @@ def retrieve_query2_results(req: Query2Request):
         for service, total_cost in top_n
     ]
 
+
 def retrieve_query3_results(req: Query3Request):
     result = fetch_all_docs("critical_tickets_evolution_sla_rate_daily")
 
     #filter by date range
     filtered = []
     for doc in result:
-        if doc['date'] >= req.start_date and doc['date'] <= req.end_date:
+        doc_date = datetime.strptime(doc["date"], "%Y-%m-%d").date()
+        end_date = datetime.strptime(req.end_date, "%Y-%m-%d").date()
+        start_date = end_date - timedelta(days=30)
+        if start_date <= doc_date <= end_date:
             filtered.append(doc)
     return filtered
 

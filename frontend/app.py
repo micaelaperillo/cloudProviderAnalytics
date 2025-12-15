@@ -58,6 +58,7 @@ with tab1:
     with st.container(border=True):
         org = st.text_input("Organización", key="q1_org")
         service = st.text_input("Servicio", key="q1_service")
+        start = st.date_input("Fecha inicio", value=date.today(), key="q1_start")
         end = st.date_input("Fecha fin", value=date.today(), key="q1_end")
 
         run = st.button("▶ Run Query", key="run_q1")
@@ -66,6 +67,7 @@ with tab1:
         payload = {
             "organization": org,
             "service": service,
+            "start_date": str(start),
             "end_date": str(end)
         }
         res = requests.post(f"{API_URL}/query/costs-daily", json=payload).json()
@@ -95,7 +97,7 @@ with tab2:
 }
         res = requests.post(f"{API_URL}/query/top-services", json=payload).json()
 
-        df = pd.DataFrame(res)
+        df = pd.DataFrame(res).
         st.subheader("📋 Detailed Table")
         show_table(df)
 
@@ -107,15 +109,14 @@ with tab3:
     st.header("🚨 Tickets Críticos & SLA Breach")
 
     with st.container(border=True):
-        start = st.date_input("Fecha inicio", key="q3_start")
         end = st.date_input("Fecha fin", key="q3_end")
         run = st.button("▶ Run Query", key="run_q3")
 
     if run:
-        payload = {"start_date": str(start), "end_date": str(end)}
+        payload = {"end_date": str(end)}
         res = requests.post(f"{API_URL}/query/sla-evolution", json=payload).json()
 
-        df = pd.DataFrame(res)
+        df = pd.DataFrame(res).drop('_id', axis=1)
         st.subheader("📋 Detailed Table")
         show_table(df)
 
@@ -127,7 +128,6 @@ with tab4:
     st.header("💰 Revenue Mensual (Normalizado)")
 
     with st.container(border=True):
-        org = st.text_input("Organización", key="q4_org")
         col1, col2 = st.columns(2)
         with col1:
             year = st.number_input("Año", 2000, 2100, date.today().year, key="q4_year")
@@ -137,10 +137,10 @@ with tab4:
         run = st.button("▶ Run Query", key="run_q4")
 
     if run:
-        payload = {"organization": org, "year": year, "month": month}
+        payload = {"year": year, "month": month}
         res = requests.post(f"{API_URL}/query/monthly-revenue", json=payload).json()
 
-        df = pd.DataFrame(res)
+        df = pd.DataFrame(res).drop('_id', axis=1)
         st.subheader("📋 Detailed Table")
         show_table(df)
 
@@ -152,7 +152,7 @@ with tab5:
     st.header("🤖 GenAI Tokens & Estimated Cost")
 
     with st.container(border=True):
-        org = st.text_input("Organización", key="q5_org")
+
         col1, col2 = st.columns(2)
         with col1:
             start = st.date_input("Fecha inicio", value=date.today() - timedelta(days=7), key="q5_start")
@@ -162,7 +162,7 @@ with tab5:
         run = st.button("▶ Run Query", key="run_q5")
 
     if run:
-        payload = {"organization": org, "start_date": str(start), "end_date": str(end)}
+        payload = {"start_date": str(start), "end_date": str(end)}
         res = requests.post(f"{API_URL}/query/genai-tokens", json=payload).json()
 
         df = pd.DataFrame(res)
